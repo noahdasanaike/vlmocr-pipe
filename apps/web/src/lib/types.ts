@@ -53,7 +53,7 @@ export interface Job {
   created_at: string;
   updated_at: string;
   // Joined fields
-  labeling_model?: LabelingModel;
+  labeling_model?: EvalModel & { provider_name?: string; provider_slug?: string };
   finetune_model?: FinetuneModel;
 }
 

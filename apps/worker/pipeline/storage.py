@@ -78,10 +78,16 @@ class StorageClient:
         job = dict(row)
         # Parse JSON fields
         job["extraction_schema"] = json.loads(job.get("extraction_schema") or "{}")
-        # Join labeling_model
+        # Join labeling_model (now from eval_models + eval_providers)
         if job.get("labeling_model_id"):
-            lm = conn.execute("SELECT * FROM labeling_models WHERE id = ?", (job["labeling_model_id"],)).fetchone()
-            job["labeling_model"] = dict(lm) if lm else None
+            lm = conn.execute("SELECT * FROM eval_models WHERE id = ?", (job["labeling_model_id"],)).fetchone()
+            if lm:
+                lm_dict = dict(lm)
+                provider = conn.execute("SELECT * FROM eval_providers WHERE id = ?", (lm_dict["provider_id"],)).fetchone()
+                lm_dict["provider"] = dict(provider) if provider else None
+                job["labeling_model"] = lm_dict
+            else:
+                job["labeling_model"] = None
         else:
             job["labeling_model"] = None
         # Join finetune_model

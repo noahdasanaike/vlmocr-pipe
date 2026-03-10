@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   mode TEXT NOT NULL DEFAULT 'full' CHECK (mode IN ('full', 'inference_only')),
-  labeling_model_id TEXT REFERENCES labeling_models(id),
+  labeling_model_id TEXT REFERENCES eval_models(id),
   finetune_model_id TEXT REFERENCES finetune_models(id),
   label_ratio REAL NOT NULL DEFAULT 0.30,
   extraction_schema TEXT NOT NULL DEFAULT '{}',

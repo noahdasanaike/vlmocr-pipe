@@ -119,6 +119,7 @@ def _get_api_key(provider_slug: str) -> str:
         "novita": "NOVITA_API_KEY",
         "dashscope": "DASHSCOPE_API_KEY",
         "replicate": "REPLICATE_API_TOKEN",
+        "google": "GEMINI_API_KEY",
     }
     var = env_map.get(provider_slug, f"{provider_slug.upper()}_API_KEY")
     # Check env first, then DB settings
@@ -240,6 +241,9 @@ async def call_model(
             else:
                 payload["enable_thinking"] = False
                 payload["max_tokens"] = 16384
+
+    elif provider_slug == "google":
+        pass  # Gemini's OpenAI-compatible endpoint works with standard payloads
 
     elif provider_slug == "replicate":
         return await _call_replicate(model_api_id, image_bytes, filename, api_key, retries)

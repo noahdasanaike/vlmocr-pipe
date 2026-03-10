@@ -11,15 +11,13 @@ interface ProviderConfig {
   name: string;
   settingKey: string;
   description: string;
-  required?: boolean;
 }
 
 const providers: ProviderConfig[] = [
   {
-    name: "Gemini",
+    name: "Google AI Studio",
     settingKey: "GEMINI_API_KEY",
-    description: "Google Gemini API key. Required for the labeling step.",
-    required: true,
+    description: "Google AI Studio API key for Gemini models.",
   },
   {
     name: "OpenRouter",
@@ -172,11 +170,6 @@ export default function SettingsPage() {
                     <span className="flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-400">
                       <X className="h-3 w-3" />
                       Not set
-                    </span>
-                  )}
-                  {provider.required && (
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                      Required
                     </span>
                   )}
                 </div>

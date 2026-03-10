@@ -1,13 +1,13 @@
 # vlmocr-pipe
 
-Local, self-hosted pipeline for digitizing documents with vision language models. Upload document images, auto-label with Gemini, fine-tune an open-source VLM with LoRA, and run batch inference — all locally.
+Local, self-hosted pipeline for digitizing documents with vision language models. Upload document images, auto-label with any VLM, fine-tune an open-source model with LoRA, and run batch inference — all locally.
 
 Companion software to [*Zero-Shot Digitization of Historical Documents with Vision Language Models*](https://www.dropbox.com/scl/fi/kjstgkkofqjs45jugxpcc/dasanaike_vlms.pdf?rlkey=ewkv46l5ghil61u3l66441k31&e=1&st=q5zd7410&dl=0) (Dasanaike 2026).
 
 ## What it does
 
 1. **Upload** document images (drag-and-drop, ZIP, or cloud import)
-2. **Auto-label** a subset with a Gemini model to generate training data
+2. **Auto-label** a subset using any VLM to generate training data
 3. **Fine-tune** a small open-source VLM (LoRA) on your labeled data using your local GPU
 4. **Batch inference** over the remaining images with the fine-tuned model
 5. **Benchmark** 25+ VLMs across providers using [SocOCRBench](https://www.dropbox.com/scl/fi/kjstgkkofqjs45jugxpcc/dasanaike_vlms.pdf?rlkey=ewkv46l5ghil61u3l66441k31&e=1&st=q5zd7410&dl=0), spanning 6 world regions, 3 historical periods, and 4 document formats
@@ -25,7 +25,7 @@ No cloud infrastructure required. No accounts, no billing, no authentication.
 
 - [Node.js](https://nodejs.org) >= 18
 - Python >= 3.10
-- A Gemini API key for auto-labeling ([get one free](https://aistudio.google.com/apikey))
+- At least one API key for a supported provider (see [Configuration](#configuration))
 - (Recommended) NVIDIA GPU with >= 8 GB VRAM for fine-tuning
 
 ## Quick start
@@ -68,14 +68,16 @@ python main.py
 
 Go to **Settings** in the sidebar ([localhost:3000/settings](http://localhost:3000/settings)) to add API keys:
 
-| Provider | Key | Required? | Used for |
-|----------|-----|-----------|----------|
-| Gemini | `GEMINI_API_KEY` | Yes | Auto-labeling training data |
-| OpenRouter | `OPENROUTER_API_KEY` | No | Benchmarking (25+ models) |
-| DeepInfra | `DEEPINFRA_API_KEY` | No | Benchmarking |
-| Novita | `NOVITA_API_KEY` | No | Benchmarking |
-| DashScope | `DASHSCOPE_API_KEY` | No | Benchmarking |
-| Replicate | `REPLICATE_API_TOKEN` | No | Benchmarking |
+| Provider | Key | Used for |
+|----------|-----|----------|
+| Google AI Studio | `GEMINI_API_KEY` | Gemini models (labeling, benchmarking) |
+| OpenRouter | `OPENROUTER_API_KEY` | GPT-5, Gemini 3, Claude, Qwen, Llama, etc. |
+| DeepInfra | `DEEPINFRA_API_KEY` | olmOCR, DeepSeek-OCR, PaddleOCR, etc. |
+| Novita | `NOVITA_API_KEY` | DeepSeek-OCR, ERNIE, Qwen models |
+| DashScope | `DASHSCOPE_API_KEY` | Qwen models (direct from Alibaba) |
+| Replicate | `REPLICATE_API_TOKEN` | dots.ocr |
+
+Add at least one provider key to get started. Any model from any provider can be used for labeling, benchmarking, or inference.
 
 Keys can alternatively be set in a `.env` file (copy `.env.example`).
 
@@ -113,10 +115,10 @@ vlmocr-pipe/
 
 ### Fine-tuning pipeline
 
-1. Create a new job, select a labeling model (Gemini) and a base model to fine-tune
+1. Create a new job, select any VLM for labeling and a base model to fine-tune
 2. Upload document images
 3. Start the job — the worker will:
-   - Label a subset of images using Gemini (configurable ratio, default 30%)
+   - Label a subset of images using your chosen VLM (configurable ratio, default 30%)
    - Fine-tune the base model with LoRA on the labeled data
    - Run inference on remaining images with the fine-tuned model
 4. Download results as JSON from the job page

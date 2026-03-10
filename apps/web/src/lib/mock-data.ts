@@ -6,6 +6,7 @@ export const MOCK_PROVIDERS = [
   { id: "p3", name: "Novita", slug: "novita", base_url: "https://api.novita.ai/openai/chat/completions", is_active: true },
   { id: "p4", name: "DashScope", slug: "dashscope", base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions", is_active: true },
   { id: "p5", name: "Replicate", slug: "replicate", base_url: "https://api.replicate.com/v1/predictions", is_active: true },
+  { id: "p6", name: "Google AI Studio", slug: "google", base_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", is_active: true },
 ];
 
 export const MOCK_MODELS = [
@@ -42,6 +43,9 @@ export const MOCK_MODELS = [
   { id: "m28", provider_id: "p4", name: "Qwen3.5 122B", api_model_id: "qwen3.5-122b-a10b", cost_per_image_credits: 1, config: { thinking: false }, is_active: true },
   // Replicate models
   { id: "m17", provider_id: "p5", name: "dots.ocr", api_model_id: "sljeff/dots.ocr:214a4fc47a5e8254ae83362a34271feeb53c5e61d9bc8aadcf96a5d8717be4d6", cost_per_image_credits: 0.5, config: {}, is_active: true },
+  // Google AI Studio models
+  { id: "m30", provider_id: "p6", name: "Gemini 2.5 Flash", api_model_id: "gemini-2.5-flash-preview-05-20", cost_per_image_credits: 1, config: {}, is_active: true },
+  { id: "m31", provider_id: "p6", name: "Gemini 2.5 Pro", api_model_id: "gemini-2.5-pro-preview-05-06", cost_per_image_credits: 2, config: {}, is_active: true },
 ];
 
 export const MOCK_DATASETS = [
@@ -54,13 +58,6 @@ export const MOCK_DATASETS = [
     is_public: true,
     created_at: "2025-01-01T00:00:00Z",
   },
-];
-
-// Mock labeling & finetune models for jobs/new page
-export const MOCK_LABELING_MODELS = [
-  { id: "lm1", name: "Gemini 2.5 Flash", api_model_id: "gemini-2.5-flash-preview-05-20", cost_per_image_credits: 1, is_active: true, created_at: "2025-01-01T00:00:00Z" },
-  { id: "lm2", name: "Gemini 2.5 Pro", api_model_id: "gemini-2.5-pro-preview-05-06", cost_per_image_credits: 2, is_active: true, created_at: "2025-01-01T00:00:00Z" },
-  { id: "lm3", name: "GPT-4o", api_model_id: "gpt-4o", cost_per_image_credits: 3, is_active: true, created_at: "2025-01-01T00:00:00Z" },
 ];
 
 export const MOCK_FINETUNE_MODELS = [

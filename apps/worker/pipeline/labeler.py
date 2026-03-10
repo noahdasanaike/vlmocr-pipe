@@ -1,52 +1,26 @@
-import asyncio
-import base64
 import json
 import logging
-import os
-
-import httpx
+import re
 
 from pipeline.storage import StorageClient
+from pipeline.evaluator import call_model
 
 logger = logging.getLogger(__name__)
 
-# Gemini rate limit: use semaphore to control concurrency
-GEMINI_CONCURRENCY = 5
-_semaphore = asyncio.Semaphore(GEMINI_CONCURRENCY)
 
-
-class GeminiLabeler:
+class Labeler:
     def __init__(self, storage: StorageClient):
         self.storage = storage
-        # Check env var first, then fall back to DB settings
-        self.api_key = os.environ.get("GEMINI_API_KEY", "")
-        if not self.api_key:
-            self.api_key = self.storage.get_setting("GEMINI_API_KEY") or ""
-        if not self.api_key:
-            raise RuntimeError(
-                "Missing GEMINI_API_KEY. Set it as an environment variable or in the Settings page."
-            )
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
 
     async def label_image(
         self,
         image_bytes: bytes,
         schema: dict[str, str],
-        model_id: str,
+        model_api_id: str,
+        provider_slug: str,
+        provider_base_url: str,
     ) -> dict:
-        """Label a single image using Gemini API."""
-        async with _semaphore:
-            return await self._call_gemini(image_bytes, schema, model_id)
-
-    async def _call_gemini(
-        self,
-        image_bytes: bytes,
-        schema: dict[str, str],
-        model_id: str,
-        retries: int = 3,
-    ) -> dict:
-        b64_image = base64.b64encode(image_bytes).decode()
-
+        """Label a single image using any eval model."""
         schema_description = "\n".join(
             f'- "{field}": {desc}' for field, desc in schema.items()
         )
@@ -60,70 +34,38 @@ Fields to extract:
 
 Return valid JSON only, no markdown formatting."""
 
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": prompt},
-                        {
-                            "inline_data": {
-                                "mime_type": "image/jpeg",
-                                "data": b64_image,
-                            }
-                        },
-                    ]
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.1,
-                "responseMimeType": "application/json",
-                "mediaResolution": "MEDIA_RESOLUTION_HIGH",
-            },
-        }
+        predicted_text, _latency = await call_model(
+            image_bytes=image_bytes,
+            filename="label_image.jpg",
+            prompt=prompt,
+            model_api_id=model_api_id,
+            provider_slug=provider_slug,
+            provider_base_url=provider_base_url,
+            max_tokens=2048,
+        )
 
-        url = f"{self.base_url}/models/{model_id}:generateContent?key={self.api_key}"
+        # Parse JSON response
+        text = predicted_text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            text = text.rsplit("```", 1)[0]
 
-        for attempt in range(retries):
-            try:
-                async with httpx.AsyncClient(timeout=60) as http:
-                    resp = await http.post(url, json=payload)
+        try:
+            result = json.loads(text)
+        except json.JSONDecodeError:
+            # Try to extract JSON from response
+            match = re.search(r'\{[\s\S]*\}', text)
+            if match:
+                result = json.loads(match.group())
+            else:
+                raise RuntimeError(f"Could not parse JSON from model response: {text[:200]}")
 
-                    if resp.status_code == 429:
-                        wait = 2 ** (attempt + 1)
-                        logger.warning(f"Rate limited, waiting {wait}s...")
-                        await asyncio.sleep(wait)
-                        continue
+        if isinstance(result, list):
+            result = result[0] if result else {}
 
-                    resp.raise_for_status()
-                    data = resp.json()
+        # Ensure all schema keys present
+        for key in schema:
+            if key not in result:
+                result[key] = None
 
-                text = data["candidates"][0]["content"]["parts"][0]["text"]
-                # Clean potential markdown wrapping
-                text = text.strip()
-                if text.startswith("```"):
-                    text = text.split("\n", 1)[1]
-                    text = text.rsplit("```", 1)[0]
-
-                result = json.loads(text)
-
-                # If Gemini returned a list (e.g. census rows), take the first item
-                if isinstance(result, list):
-                    if result:
-                        result = result[0]
-                    else:
-                        result = {}
-
-                # Ensure all schema keys are present
-                for key in schema:
-                    if key not in result:
-                        result[key] = None
-
-                return result
-
-            except (httpx.HTTPStatusError, json.JSONDecodeError, KeyError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                raise RuntimeError(f"Gemini labeling failed after {retries} attempts: {e}")
-
-        raise RuntimeError("Gemini labeling exhausted retries")
+        return result

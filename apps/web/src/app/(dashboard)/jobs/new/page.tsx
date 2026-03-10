@@ -33,8 +33,8 @@ import {
   BarChart3,
 } from "lucide-react";
 import { ArtFooter } from "@/components/art-footer";
-import type { LabelingModel, FinetuneModel, EvalModel, EvalProvider, ExtractionSchema, JobMode } from "@/lib/types";
-import { MOCK_LABELING_MODELS, MOCK_FINETUNE_MODELS, MOCK_MODELS, MOCK_PROVIDERS } from "@/lib/mock-data";
+import type { FinetuneModel, EvalModel, EvalProvider, ExtractionSchema, JobMode } from "@/lib/types";
+import { MOCK_FINETUNE_MODELS, MOCK_MODELS, MOCK_PROVIDERS } from "@/lib/mock-data";
 
 type Step = "upload" | "configure" | "review";
 type UploadMethod = "files" | "folder" | "zip" | "cloud";
@@ -101,7 +101,7 @@ export default function NewJobPage() {
   const [qcResults, setQcResults] = useState<{ modelId: string; modelName: string; outputs: { filename: string; text: string }[] }[] | null>(null);
   const [qcExpanded, setQcExpanded] = useState(false);
 
-  const [labelingModels, setLabelingModels] = useState<LabelingModel[]>([]);
+  const [labelingModels, setLabelingModels] = useState<(EvalModel & { provider_name?: string; provider_slug?: string })[]>([]);
   const [finetuneModels, setFinetuneModels] = useState<FinetuneModel[]>([]);
   const [selectedLabelModel, setSelectedLabelModel] = useState("");
   const [selectedFinetuneModel, setSelectedFinetuneModel] = useState("");
@@ -131,7 +131,10 @@ export default function NewJobPage() {
         }
       } catch {
         // API unavailable — use mock data
-        const lm = MOCK_LABELING_MODELS as unknown as LabelingModel[];
+        const lm = MOCK_MODELS.map(m => {
+          const p = MOCK_PROVIDERS.find(p => p.id === m.provider_id);
+          return { ...m, provider_name: p?.name, provider_slug: p?.slug } as any;
+        }).filter((m: any) => m.is_active);
         const fm = MOCK_FINETUNE_MODELS as unknown as FinetuneModel[];
         setLabelingModels(lm);
         setFinetuneModels(fm);
@@ -816,7 +819,7 @@ export default function NewJobPage() {
                     <SelectContent>
                       {labelingModels.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
-                          {m.name}
+                          {m.provider_name ? `${m.provider_name} / ${m.name}` : m.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

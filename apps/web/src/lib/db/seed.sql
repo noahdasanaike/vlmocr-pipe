@@ -18,7 +18,8 @@ INSERT OR IGNORE INTO eval_providers (id, name, slug, base_url) VALUES
   ('p2', 'DeepInfra', 'deepinfra', 'https://api.deepinfra.com/v1/openai/chat/completions'),
   ('p3', 'Novita', 'novita', 'https://api.novita.ai/openai/chat/completions'),
   ('p4', 'DashScope', 'dashscope', 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions'),
-  ('p5', 'Replicate', 'replicate', 'https://api.replicate.com/v1/predictions');
+  ('p5', 'Replicate', 'replicate', 'https://api.replicate.com/v1/predictions'),
+  ('p6', 'Google AI Studio', 'google', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
 
 -- Eval models
 INSERT OR IGNORE INTO eval_models (id, provider_id, name, api_model_id, cost_per_image_credits, config) VALUES
@@ -47,4 +48,6 @@ INSERT OR IGNORE INTO eval_models (id, provider_id, name, api_model_id, cost_per
   ('m26', 'p4', 'Qwen3.5 35B', 'qwen3.5-35b-a3b', 0.5, '{"thinking":false}'),
   ('m27', 'p4', 'Qwen3.5 27B', 'qwen3.5-27b', 0.5, '{"thinking":false}'),
   ('m28', 'p4', 'Qwen3.5 122B', 'qwen3.5-122b-a10b', 1, '{"thinking":false}'),
-  ('m17', 'p5', 'dots.ocr', 'sljeff/dots.ocr:214a4fc47a5e8254ae83362a34271feeb53c5e61d9bc8aadcf96a5d8717be4d6', 0.5, '{}');
+  ('m17', 'p5', 'dots.ocr', 'sljeff/dots.ocr:214a4fc47a5e8254ae83362a34271feeb53c5e61d9bc8aadcf96a5d8717be4d6', 0.5, '{}'),
+  ('m30', 'p6', 'Gemini 2.5 Flash', 'gemini-2.5-flash-preview-05-20', 1, '{}'),
+  ('m31', 'p6', 'Gemini 2.5 Pro', 'gemini-2.5-pro-preview-05-06', 2, '{}');

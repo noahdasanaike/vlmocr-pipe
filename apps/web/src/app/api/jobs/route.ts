@@ -12,7 +12,7 @@ export async function GET() {
 
     // Join labeling_model
     if (job.labeling_model_id) {
-      job.labeling_model = db.prepare("SELECT * FROM labeling_models WHERE id = ?").get(job.labeling_model_id) ?? null;
+      job.labeling_model = db.prepare("SELECT m.*, p.name as provider_name, p.slug as provider_slug FROM eval_models m JOIN eval_providers p ON m.provider_id = p.id WHERE m.id = ?").get(job.labeling_model_id) ?? null;
     } else {
       job.labeling_model = null;
     }

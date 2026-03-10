@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from pipeline.storage import StorageClient, STORAGE_DIR
-from pipeline.labeler import GeminiLabeler
+from pipeline.labeler import Labeler
 from pipeline.trainer import LocalTrainer
 from pipeline.inferencer import LocalInferencer
 from pipeline.evaluator import call_model
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class PipelineOrchestrator:
     def __init__(self):
         self.storage = StorageClient()
-        self.labeler = GeminiLabeler(self.storage)
+        self.labeler = Labeler(self.storage)
         self.trainer = LocalTrainer(self.storage)
         self.inferencer = LocalInferencer(self.storage)
 
@@ -126,7 +126,11 @@ class PipelineOrchestrator:
         # Stage 1: Label (status already set to 'labeling' by queue consumer)
         label_images = self.storage.get_images(job_id, role="label_source")
         schema = job["extraction_schema"]
-        model_id = job["labeling_model"]["api_model_id"]
+        labeling_model = job.get("labeling_model") or {}
+        label_model_api_id = labeling_model.get("api_model_id", "")
+        label_provider = labeling_model.get("provider") or {}
+        label_provider_slug = label_provider.get("slug", "")
+        label_provider_base_url = label_provider.get("base_url", "")
 
         # Count already-labeled images (from previous runs)
         labeled_count = sum(1 for img in label_images if img.get("gemini_label"))
@@ -145,7 +149,9 @@ class PipelineOrchestrator:
 
             try:
                 image_bytes = await self.storage.download_image(img["storage_path"])
-                label = await self.labeler.label_image(image_bytes, schema, model_id)
+                label = await self.labeler.label_image(
+                    image_bytes, schema, label_model_api_id, label_provider_slug, label_provider_base_url
+                )
 
                 self.storage.update_image(
                     img["id"],
@@ -238,7 +244,7 @@ class PipelineOrchestrator:
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     str(uuid.uuid4()),
-                    job["user_id"],
+                    None,
                     job_id,
                     job["finetune_model_id"],
                     f"{job['name']} - Adapter",

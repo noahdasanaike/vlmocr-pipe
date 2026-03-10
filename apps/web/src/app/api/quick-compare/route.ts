@@ -15,6 +15,7 @@ function getProviderApiKey(slug: string): string | null {
     deepinfra: "DEEPINFRA_API_KEY",
     novita: "NOVITA_API_KEY",
     dashscope: "DASHSCOPE_API_KEY",
+    google: "GEMINI_API_KEY",
   };
   const envKey = envMap[slug];
   return envKey ? (process.env[envKey] ?? null) : null;
