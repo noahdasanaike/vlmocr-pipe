@@ -1,0 +1,256 @@
+import json
+import logging
+import os
+import uuid
+from datetime import datetime, timezone
+
+from pipeline.storage import StorageClient, STORAGE_DIR
+from pipeline.labeler import GeminiLabeler
+from pipeline.trainer import LocalTrainer
+from pipeline.inferencer import LocalInferencer
+from pipeline.evaluator import call_model
+
+logger = logging.getLogger(__name__)
+
+
+class PipelineOrchestrator:
+    def __init__(self):
+        self.storage = StorageClient()
+        self.labeler = GeminiLabeler(self.storage)
+        self.trainer = LocalTrainer(self.storage)
+        self.inferencer = LocalInferencer(self.storage)
+
+    async def update_job_status(
+        self,
+        job_id: str,
+        status: str,
+        error_message: str | None = None,
+        **kwargs,
+    ):
+        """Update job status in DB."""
+        updates = {"status": status}
+        if error_message:
+            updates["error_message"] = error_message
+        updates.update(kwargs)
+        self.storage.update_job(job_id, **updates)
+
+    async def run_inference_only(self, job_id: str):
+        """Run inference-only pipeline using an eval model."""
+        job = self.storage.get_job(job_id)
+
+        if job["status"] == "cancelled":
+            logger.info(f"Job {job_id} was cancelled, skipping")
+            return
+
+        await self.update_job_status(job_id, "inferring")
+
+        all_images = self.storage.get_images(job_id, role="infer_target")
+        schema = job["extraction_schema"]
+        model_api_id = job.get("eval_model_api_id", "")
+        provider_slug = job.get("eval_model_provider_slug", "")
+        provider_base_url = job.get("eval_model_provider_base_url", "")
+
+        # Build extraction prompt from schema
+        fields_desc = "\n".join(
+            f"- {k}: {v}" for k, v in schema.items()
+        )
+        prompt = (
+            f"Extract the following fields from this image and return ONLY valid JSON "
+            f"with these keys:\n{fields_desc}\n\n"
+            f"Return a JSON object with keys: {', '.join(schema.keys())}. "
+            f"No explanation, just the JSON."
+        )
+
+        inferred_count = 0
+        for img in all_images:
+            # Check for cancellation
+            current = self.storage.get_job(job_id)
+            if current["status"] == "cancelled":
+                return
+
+            try:
+                image_bytes = await self.storage.download_image(img["storage_path"])
+                predicted_text, _latency = await call_model(
+                    image_bytes=image_bytes,
+                    filename=img["filename"],
+                    prompt=prompt,
+                    model_api_id=model_api_id,
+                    provider_slug=provider_slug,
+                    provider_base_url=provider_base_url,
+                )
+
+                # Parse JSON from response
+                try:
+                    predicted_result = json.loads(predicted_text)
+                except json.JSONDecodeError:
+                    # Try to extract JSON from markdown code block
+                    import re
+                    match = re.search(r'\{[^{}]*\}', predicted_text, re.DOTALL)
+                    predicted_result = json.loads(match.group()) if match else {k: predicted_text for k in schema}
+
+                self.storage.update_image(
+                    img["id"],
+                    predicted_result=predicted_result,
+                    infer_status="complete",
+                )
+                inferred_count += 1
+                await self.update_job_status(
+                    job_id, "inferring", inferred_count=inferred_count
+                )
+            except Exception as e:
+                logger.error(f"Failed to infer image {img['id']}: {e}")
+                self.storage.update_image(img["id"], infer_status="failed")
+
+        # Complete
+        await self.update_job_status(
+            job_id,
+            "complete",
+            inferred_count=inferred_count,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        logger.info(f"Inference-only job {job_id} completed ({inferred_count} images)")
+
+    async def run(self, job_id: str):
+        """Run the full pipeline for a job."""
+        job = self.storage.get_job(job_id)
+
+        if job["status"] == "cancelled":
+            logger.info(f"Job {job_id} was cancelled, skipping")
+            return
+
+        # Dispatch to inference-only path if applicable
+        if job.get("mode") == "inference_only":
+            await self.run_inference_only(job_id)
+            return
+
+        # Stage 1: Label (status already set to 'labeling' by queue consumer)
+        label_images = self.storage.get_images(job_id, role="label_source")
+        schema = job["extraction_schema"]
+        model_id = job["labeling_model"]["api_model_id"]
+
+        # Count already-labeled images (from previous runs)
+        labeled_count = sum(1 for img in label_images if img.get("gemini_label"))
+        if labeled_count > 0:
+            logger.info(f"Skipping {labeled_count} already-labeled images")
+
+        for img in label_images:
+            # Skip already-labeled images
+            if img.get("gemini_label"):
+                continue
+
+            # Check for cancellation
+            current = self.storage.get_job(job_id)
+            if current["status"] == "cancelled":
+                return
+
+            try:
+                image_bytes = await self.storage.download_image(img["storage_path"])
+                label = await self.labeler.label_image(image_bytes, schema, model_id)
+
+                self.storage.update_image(
+                    img["id"],
+                    gemini_label=label,
+                    label_status="complete",
+                )
+                labeled_count += 1
+                await self.update_job_status(
+                    job_id, "labeling", labeled_count=labeled_count
+                )
+            except Exception as e:
+                logger.error(f"Failed to label image {img['id']}: {e}")
+                self.storage.update_image(img["id"], label_status="failed")
+
+        if labeled_count == 0:
+            await self.update_job_status(
+                job_id, "failed", error_message="No images were successfully labeled"
+            )
+            return
+
+        # Stage 2: Train
+        await self.update_job_status(job_id, "training")
+        try:
+            adapter_path = await self.trainer.train(job_id, job)
+        except Exception as e:
+            await self.update_job_status(
+                job_id, "failed", error_message=f"Training failed: {e}"
+            )
+            return
+
+        # Stage 3: Infer
+        await self.update_job_status(job_id, "inferring")
+        infer_images = self.storage.get_images(job_id, role="infer_target")
+
+        inferred_count = 0
+        try:
+            results = await self.inferencer.infer_batch(
+                job_id, job, adapter_path, infer_images
+            )
+            for img_id, result in results:
+                self.storage.update_image(
+                    img_id,
+                    predicted_result=result,
+                    infer_status="complete",
+                )
+                inferred_count += 1
+                await self.update_job_status(
+                    job_id, "inferring", inferred_count=inferred_count
+                )
+        except Exception as e:
+            await self.update_job_status(
+                job_id, "failed", error_message=f"Inference failed: {e}"
+            )
+            return
+
+        # Also store Gemini labels as results for label_source images
+        for img in label_images:
+            if img.get("gemini_label"):
+                self.storage.update_image(
+                    img["id"],
+                    predicted_result=img["gemini_label"],
+                    infer_status="complete",
+                )
+
+        # Stage 4: Complete
+        await self.update_job_status(
+            job_id,
+            "complete",
+            inferred_count=inferred_count,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+        # Save the fine-tuned model with size info
+        adapter_full_path = STORAGE_DIR / adapter_path
+        adapter_size = 0
+        adapter_file_count = 0
+        try:
+            for f in adapter_full_path.rglob("*"):
+                if f.is_file():
+                    adapter_size += f.stat().st_size
+                    adapter_file_count += 1
+        except Exception:
+            pass
+
+        # Insert saved_models record
+        conn = self.storage._get_conn()
+        try:
+            conn.execute(
+                """INSERT INTO saved_models (id, user_id, job_id, finetune_model_id, name, storage_path, size_bytes, file_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid.uuid4()),
+                    job["user_id"],
+                    job_id,
+                    job["finetune_model_id"],
+                    f"{job['name']} - Adapter",
+                    adapter_path,
+                    adapter_size,
+                    adapter_file_count,
+                ),
+            )
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to save model record: {e}")
+        finally:
+            conn.close()
+
+        logger.info(f"Job {job_id} completed successfully")
