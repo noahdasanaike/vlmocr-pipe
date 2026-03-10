@@ -18,6 +18,7 @@ const statusConfig: Record<JobStatus, { color: string; bg: string }> = {
   complete: { color: "text-emerald-700", bg: "bg-emerald-50" },
   failed: { color: "text-red-700", bg: "bg-red-50" },
   cancelled: { color: "text-slate-500", bg: "bg-slate-100" },
+  paused: { color: "text-orange-700", bg: "bg-orange-50" },
 };
 
 export default function DashboardPage() {

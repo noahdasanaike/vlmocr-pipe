@@ -93,7 +93,7 @@ class BenchmarkOrchestrator:
             for sample in pending_samples:
                 # Check for cancellation
                 current = self.storage.get_benchmark_run(run_id)
-                if current["status"] == "cancelled":
+                if current["status"] in ("cancelled", "paused"):
                     logger.info(f"Benchmark run {run_id} was cancelled")
                     return
 

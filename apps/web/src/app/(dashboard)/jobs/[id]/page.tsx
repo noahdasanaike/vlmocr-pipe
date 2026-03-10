@@ -22,7 +22,7 @@ import {
 import { ImageViewer } from "@/components/image-viewer";
 import { ArtFooter } from "@/components/art-footer";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Download, Loader2, Images, Tag, Cpu, Terminal, Play, Copy, Check, Square, Trash2, RotateCcw, Eye, BarChart3, Database } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Images, Tag, Cpu, Terminal, Play, Copy, Check, Square, Trash2, RotateCcw, Eye, BarChart3, Database, Pause } from "lucide-react";
 import type { Job, JobImage, JobStatus } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -35,17 +35,19 @@ const statusConfig: Record<JobStatus, { color: string; bg: string; label: string
   complete: { color: "text-emerald-700", bg: "bg-emerald-50", label: "Complete" },
   failed: { color: "text-red-700", bg: "bg-red-50", label: "Failed" },
   cancelled: { color: "text-slate-500", bg: "bg-slate-100", label: "Cancelled" },
+  paused: { color: "text-orange-700", bg: "bg-orange-50", label: "Paused" },
 };
 
 const statusMessages: Record<JobStatus, string> = {
   pending: "Job is queued and waiting to start...",
   uploading: "Images are being uploaded...",
-  labeling: "Gemini is labeling your training images...",
+  labeling: "Labeling your training images...",
   training: "Fine-tuning the model locally (this may take 10-30 min)...",
   inferring: "Running inference on remaining images...",
   complete: "All done! Your results are ready.",
   failed: "Something went wrong.",
   cancelled: "Job was cancelled.",
+  paused: "Job is paused. Resume to continue processing.",
 };
 
 export default function JobDetailPage({
@@ -213,6 +215,66 @@ export default function JobDetailPage({
             </Button>
           )}
 
+          {/* Pause — for labeling/inferring jobs */}
+          {["labeling", "inferring"].includes(job.status) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-lg text-xs h-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50 hover:border-orange-200"
+              onClick={async () => {
+                setActionLoading("pause");
+                try {
+                  await fetch(`/api/jobs/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "pause" }),
+                  });
+                  await fetchJob();
+                } finally {
+                  setActionLoading(null);
+                }
+              }}
+              disabled={actionLoading !== null}
+            >
+              {actionLoading === "pause" ? (
+                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+              ) : (
+                <Pause className="mr-1.5 h-3 w-3" />
+              )}
+              Pause
+            </Button>
+          )}
+
+          {/* Resume — for paused jobs */}
+          {job.status === "paused" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-lg text-xs h-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200"
+              onClick={async () => {
+                setActionLoading("resume");
+                try {
+                  await fetch(`/api/jobs/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "resume" }),
+                  });
+                  await fetchJob();
+                } finally {
+                  setActionLoading(null);
+                }
+              }}
+              disabled={actionLoading !== null}
+            >
+              {actionLoading === "resume" ? (
+                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+              ) : (
+                <Play className="mr-1.5 h-3 w-3" />
+              )}
+              Resume
+            </Button>
+          )}
+
           {/* Retry — for failed jobs */}
           {job.status === "failed" && (
             <Button
@@ -271,17 +333,56 @@ export default function JobDetailPage({
         </div>
       </div>
 
-      {/* Progress bar */}
+      {/* Progress */}
       <div className="rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center justify-between text-sm mb-2">
+        <div className="flex items-center justify-between text-sm mb-3">
           <span className="text-slate-600">{statusMessages[job.status]}</span>
           <span className="font-medium text-slate-900">{overallProgress}%</span>
         </div>
-        <Progress value={overallProgress} className="h-2" />
-        {job.error_message && (
-          <p className="mt-3 text-sm text-red-600">
-            {job.error_message}
+        <Progress value={overallProgress} className="h-2 mb-3" />
+
+        {/* Per-stage breakdown for full pipeline */}
+        {!isInferenceOnly && job.status !== "pending" && job.status !== "uploading" && (
+          <div className="flex gap-4 text-xs text-slate-500">
+            <div className="flex items-center gap-1.5">
+              <div className={`h-2 w-2 rounded-full ${
+                job.status === "labeling" ? "bg-amber-400 animate-pulse" :
+                job.labeled_count > 0 ? "bg-emerald-400" : "bg-slate-200"
+              }`} />
+              <span>Label {job.labeled_count}/{job.label_images}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className={`h-2 w-2 rounded-full ${
+                job.status === "training" ? "bg-violet-400 animate-pulse" :
+                ["inferring", "complete"].includes(job.status) ? "bg-emerald-400" : "bg-slate-200"
+              }`} />
+              <span>Train</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className={`h-2 w-2 rounded-full ${
+                job.status === "inferring" ? "bg-indigo-400 animate-pulse" :
+                job.status === "complete" ? "bg-emerald-400" : "bg-slate-200"
+              }`} />
+              <span>Infer {job.inferred_count}/{job.infer_images}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Elapsed time */}
+        {job.started_at && (
+          <p className="text-xs text-slate-400 mt-2">
+            {job.completed_at ? (
+              <>Completed in {formatDuration(new Date(job.started_at), new Date(job.completed_at))}</>
+            ) : isActive ? (
+              <>Running for {formatDuration(new Date(job.started_at), new Date())}</>
+            ) : job.status === "paused" ? (
+              <>Paused after {formatDuration(new Date(job.started_at), new Date())}</>
+            ) : null}
           </p>
+        )}
+
+        {job.error_message && !job.error_message.startsWith("paused_from:") && (
+          <p className="mt-3 text-sm text-red-600">{job.error_message}</p>
         )}
       </div>
 
@@ -562,7 +663,7 @@ export default function JobDetailPage({
                             ? "bg-amber-50 text-amber-700"
                             : "bg-indigo-50 text-indigo-700"
                         }`}>
-                          {img.role === "label_source" ? "Gemini" : "Model"}
+                          {img.role === "label_source" ? "Label" : "Model"}
                         </span>
                       </TableCell>
                       {Object.keys(job.extraction_schema).map((field) => (
@@ -604,7 +705,7 @@ export default function JobDetailPage({
               imageId={viewerImage.id}
               transcriptions={[
                 ...(viewerImage.gemini_label ? [{
-                  label: "Gemini Label",
+                  label: "Auto Label",
                   text: JSON.stringify(viewerImage.gemini_label, null, 2),
                 }] : []),
                 ...(viewerImage.predicted_result ? [{
@@ -623,6 +724,18 @@ export default function JobDetailPage({
       <ArtFooter page="jobs/detail" />
     </div>
   );
+}
+
+function formatDuration(start: Date, end: Date): string {
+  const ms = end.getTime() - start.getTime();
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainSec = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainSec}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainMin = minutes % 60;
+  return `${hours}h ${remainMin}m`;
 }
 
 function MiniStat({

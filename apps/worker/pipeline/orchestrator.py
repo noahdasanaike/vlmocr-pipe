@@ -38,8 +38,8 @@ class PipelineOrchestrator:
         """Run inference-only pipeline using an eval model."""
         job = self.storage.get_job(job_id)
 
-        if job["status"] == "cancelled":
-            logger.info(f"Job {job_id} was cancelled, skipping")
+        if job["status"] in ("cancelled", "paused"):
+            logger.info(f"Job {job_id} was {job['status']}, skipping")
             return
 
         await self.update_job_status(job_id, "inferring")
@@ -70,7 +70,7 @@ class PipelineOrchestrator:
         for img in pending_images:
             # Check for cancellation
             current = self.storage.get_job(job_id)
-            if current["status"] == "cancelled":
+            if current["status"] in ("cancelled", "paused"):
                 return
 
             try:
@@ -127,8 +127,8 @@ class PipelineOrchestrator:
         """Run the full pipeline for a job."""
         job = self.storage.get_job(job_id)
 
-        if job["status"] == "cancelled":
-            logger.info(f"Job {job_id} was cancelled, skipping")
+        if job["status"] in ("cancelled", "paused"):
+            logger.info(f"Job {job_id} was {job['status']}, skipping")
             return
 
         # Dispatch to inference-only path if applicable
@@ -157,7 +157,7 @@ class PipelineOrchestrator:
 
             # Check for cancellation
             current = self.storage.get_job(job_id)
-            if current["status"] == "cancelled":
+            if current["status"] in ("cancelled", "paused"):
                 return
 
             try:

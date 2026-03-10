@@ -6,7 +6,8 @@ export type JobStatus =
   | "inferring"
   | "complete"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "paused";
 
 export type ImageRole = "label_source" | "infer_target";
 export type ImageLabelStatus = "pending" | "processing" | "complete" | "failed" | "skipped";

@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   label_ratio REAL NOT NULL DEFAULT 0.30,
   extraction_schema TEXT NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending','uploading','labeling','training','inferring','complete','failed','cancelled')),
+    CHECK (status IN ('pending','uploading','labeling','training','inferring','complete','failed','cancelled','paused')),
   total_images INTEGER NOT NULL DEFAULT 0,
   label_images INTEGER NOT NULL DEFAULT 0,
   infer_images INTEGER NOT NULL DEFAULT 0,
