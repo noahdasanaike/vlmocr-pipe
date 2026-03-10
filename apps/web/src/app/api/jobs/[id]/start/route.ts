@@ -26,7 +26,7 @@ export async function POST(
     const labelCount = isInferenceOnly ? 0 : Math.ceil(uploadedFiles.length * (Number(job.label_ratio) || 0.3));
 
     const insertStmt = db.prepare(
-      "INSERT INTO images (id, job_id, storage_path, filename, content_type, role, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))"
+      "INSERT INTO images (id, job_id, storage_path, filename, role, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))"
     );
 
     const insertMany = db.transaction((files: typeof uploadedFiles) => {
@@ -38,7 +38,6 @@ export async function POST(
           id,
           f.path,
           f.filename,
-          f.contentType || "image/jpeg",
           role,
         );
       }
