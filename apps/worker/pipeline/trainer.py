@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -15,12 +16,11 @@ class LocalTrainer:
     async def train(self, job_id: str, job: dict) -> str:
         """
         Train a LoRA adapter locally.
-        1. Build training dataset from labeled images
-        2. Load base model
-        3. Train with LoRA
-        4. Save adapter to local storage
-        5. Return adapter storage path
+        Runs blocking PyTorch ops in a thread to avoid blocking the event loop.
         """
+        return await asyncio.to_thread(self._train_sync, job_id, job)
+
+    def _train_sync(self, job_id: str, job: dict) -> str:
         label_images = self.storage.get_images(job_id, role="label_source")
         labeled = [img for img in label_images if img.get("gemini_label")]
 
@@ -165,6 +165,12 @@ class LocalTrainer:
             # Save LoRA adapter
             model.save_pretrained(str(adapter_full_path))
             logger.info(f"Adapter saved to {adapter_full_path}")
+
+            # Free GPU memory
+            del model
+            if 'trainer' in dir():
+                del trainer
+            torch.cuda.empty_cache()
 
         except ImportError as e:
             logger.error(f"Missing ML dependencies: {e}")

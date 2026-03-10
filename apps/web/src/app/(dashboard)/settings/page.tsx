@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArtFooter } from "@/components/art-footer";
 import { Key, Check, X, Eye, EyeOff, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface ProviderConfig {
   name: string;
@@ -94,11 +95,16 @@ export default function SettingsPage() {
         body: JSON.stringify({ key: settingKey, value: value.trim() }),
       });
       if (res.ok) {
-        setSettings((prev) => ({ ...prev, [settingKey]: value.trim() }));
+        const v = value.trim();
+        const masked = v.length <= 8 ? "••••••••" : v.slice(0, 4) + "••••" + v.slice(-4);
+        setSettings((prev) => ({ ...prev, [settingKey]: masked }));
         setInputValues((prev) => ({ ...prev, [settingKey]: "" }));
+        toast.success("API key saved");
+      } else {
+        toast.error("Failed to save API key");
       }
     } catch {
-      // Save failed
+      toast.error("Failed to save API key");
     } finally {
       setSaving((prev) => ({ ...prev, [settingKey]: false }));
     }
@@ -118,9 +124,12 @@ export default function SettingsPage() {
           delete next[settingKey];
           return next;
         });
+        toast.success("API key removed");
+      } else {
+        toast.error("Failed to remove API key");
       }
     } catch {
-      // Delete failed
+      toast.error("Failed to remove API key");
     } finally {
       setDeleting((prev) => ({ ...prev, [settingKey]: false }));
     }

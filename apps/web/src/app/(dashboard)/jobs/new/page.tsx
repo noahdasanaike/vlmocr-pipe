@@ -29,7 +29,6 @@ import {
   FileArchive,
   Cloud,
   Globe,
-  Terminal,
   BarChart3,
 } from "lucide-react";
 import { ArtFooter } from "@/components/art-footer";
@@ -99,8 +98,6 @@ export default function NewJobPage() {
   const [qcModels, setQcModels] = useState<Set<string>>(new Set());
   const [qcRunning, setQcRunning] = useState(false);
   const [qcResults, setQcResults] = useState<{ modelId: string; modelName: string; outputs: { filename: string; text: string }[] }[] | null>(null);
-  const [qcExpanded, setQcExpanded] = useState(false);
-
   const [labelingModels, setLabelingModels] = useState<(EvalModel & { provider_name?: string; provider_slug?: string })[]>([]);
   const [finetuneModels, setFinetuneModels] = useState<FinetuneModel[]>([]);
   const [selectedLabelModel, setSelectedLabelModel] = useState("");
@@ -370,7 +367,6 @@ export default function NewJobPage() {
   const selectedFM = finetuneModels.find((m) => m.id === selectedFinetuneModel);
   const currentStepIdx = steps.findIndex((s) => s.key === step);
   const hasLocalFiles = images.some((img) => img.file);
-  const imageCount = images.length;
 
   // --- Submit ---
 
@@ -787,7 +783,7 @@ export default function NewJobPage() {
               >
                 <p className="text-sm font-medium text-slate-900">Full Pipeline</p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Label with Gemini, fine-tune, then infer
+                  Auto-label, fine-tune, then infer
                 </p>
               </button>
               <button
@@ -855,7 +851,7 @@ export default function NewJobPage() {
                   step={5}
                 />
                 <p className="text-xs text-slate-400">
-                  {labelCount.toLocaleString()} images labeled by Gemini,{" "}
+                  {labelCount.toLocaleString()} images auto-labeled,{" "}
                   {inferCount.toLocaleString()} for model inference. 20-40% is typical.
                 </p>
               </div>

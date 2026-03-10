@@ -73,7 +73,6 @@ export const MOCK_MODELS = [
 export const MOCK_DATASETS = [
   {
     id: "ds1",
-    user_id: null,
     name: "SocOCRBench",
     description: "Social science OCR benchmark: 37 datasets across 6 regions, 3 periods, 4 formats. ~432 samples covering handwritten text, printed text, printed tables, and handwritten tables.",
     sample_count: 432,
@@ -83,9 +82,10 @@ export const MOCK_DATASETS = [
 ];
 
 export const MOCK_FINETUNE_MODELS = [
-  { id: "fm1", name: "Qwen2.5-VL-7B", hf_model_id: "Qwen/Qwen2.5-VL-7B-Instruct", credit_cost_per_image: 1, is_active: true, created_at: "2025-01-01T00:00:00Z" },
-  { id: "fm2", name: "Qwen2.5-VL-3B", hf_model_id: "Qwen/Qwen2.5-VL-3B-Instruct", credit_cost_per_image: 0.5, is_active: true, created_at: "2025-01-01T00:00:00Z" },
-  { id: "fm3", name: "Florence-2-large", hf_model_id: "microsoft/Florence-2-large", credit_cost_per_image: 0.5, is_active: true, created_at: "2025-01-01T00:00:00Z" },
+  { id: "fm1", name: "GLM-OCR (0.9B)", hf_repo: "zai-org/GLM-OCR", gpu_type: "AMPERE_48", is_active: true, created_at: "2025-01-01T00:00:00Z" },
+  { id: "fm2", name: "dots.OCR (1.7B)", hf_repo: "rednote-hilab/dots.ocr", gpu_type: "AMPERE_48", is_active: true, created_at: "2025-01-01T00:00:00Z" },
+  { id: "fm3", name: "PaddleOCR-VL 1.5 (0.9B)", hf_repo: "PaddlePaddle/PaddleOCR-VL-1.5", gpu_type: "AMPERE_48", is_active: true, created_at: "2025-01-01T00:00:00Z" },
+  { id: "fm4", name: "OLMoOCR 2 (7B)", hf_repo: "allenai/olmOCR-2-7B-1025", gpu_type: "AMPERE_80", is_active: true, created_at: "2025-01-01T00:00:00Z" },
 ];
 
 // In-memory store for user-created datasets

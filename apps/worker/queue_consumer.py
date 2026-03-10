@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 
-from pipeline.storage import StorageClient
+from pipeline.storage import StorageClient, _retry_on_locked
 from pipeline.orchestrator import PipelineOrchestrator
 from pipeline.benchmark_orchestrator import BenchmarkOrchestrator
 
@@ -20,43 +20,45 @@ class QueueConsumer:
 
     def _recover_stale_jobs(self):
         """Reset jobs and benchmark runs stuck in active states back to pending."""
-        conn = self.storage._get_conn()
-        try:
-            # Recover stale fine-tuning jobs
-            stale_jobs = conn.execute(
-                "SELECT id, name, status FROM jobs "
-                "WHERE status IN ('labeling', 'training', 'inferring') "
-                "AND updated_at < datetime('now', '-10 minutes')"
-            ).fetchall()
+        def _do():
+            conn = self.storage._get_conn()
+            try:
+                # Recover stale fine-tuning jobs
+                stale_jobs = conn.execute(
+                    "SELECT id, name, status FROM jobs "
+                    "WHERE status IN ('labeling', 'training', 'inferring') "
+                    "AND updated_at < datetime('now', '-10 minutes')"
+                ).fetchall()
 
-            for job in stale_jobs:
-                conn.execute(
-                    "UPDATE jobs SET status = 'pending', updated_at = datetime('now') WHERE id = ?",
-                    (job["id"],),
-                )
-                logger.warning(
-                    f"Recovered stale job {job['id']} ({job['name']}) from '{job['status']}' -> 'pending'"
-                )
+                for job in stale_jobs:
+                    conn.execute(
+                        "UPDATE jobs SET status = 'pending', updated_at = datetime('now') WHERE id = ?",
+                        (job["id"],),
+                    )
+                    logger.warning(
+                        f"Recovered stale job {job['id']} ({job['name']}) from '{job['status']}' -> 'pending'"
+                    )
 
-            # Recover stale benchmark runs
-            stale_runs = conn.execute(
-                "SELECT id, name FROM benchmark_runs "
-                "WHERE status = 'running' "
-                "AND updated_at < datetime('now', '-10 minutes')"
-            ).fetchall()
+                # Recover stale benchmark runs
+                stale_runs = conn.execute(
+                    "SELECT id, name FROM benchmark_runs "
+                    "WHERE status = 'running' "
+                    "AND updated_at < datetime('now', '-10 minutes')"
+                ).fetchall()
 
-            for run in stale_runs:
-                conn.execute(
-                    "UPDATE benchmark_runs SET status = 'pending', updated_at = datetime('now') WHERE id = ?",
-                    (run["id"],),
-                )
-                logger.warning(
-                    f"Recovered stale benchmark run {run['id']} ({run['name']}) from 'running' -> 'pending'"
-                )
+                for run in stale_runs:
+                    conn.execute(
+                        "UPDATE benchmark_runs SET status = 'pending', updated_at = datetime('now') WHERE id = ?",
+                        (run["id"],),
+                    )
+                    logger.warning(
+                        f"Recovered stale benchmark run {run['id']} ({run['name']}) from 'running' -> 'pending'"
+                    )
 
-            conn.commit()
-        finally:
-            conn.close()
+                conn.commit()
+            finally:
+                conn.close()
+        _retry_on_locked(_do)
 
     async def run(self):
         logger.info("Queue consumer starting (DB polling mode)...")
@@ -109,32 +111,34 @@ class QueueConsumer:
 
     def _claim_next_job(self) -> dict | None:
         """Atomically claim the oldest pending job by updating its status."""
-        conn = self.storage._get_conn()
+        def _do():
+            conn = self.storage._get_conn()
+            try:
+                # Find oldest pending job
+                row = conn.execute(
+                    "SELECT id, name, mode FROM jobs WHERE status = 'pending' ORDER BY created_at LIMIT 1"
+                ).fetchone()
 
-        # Find oldest pending job
-        row = conn.execute(
-            "SELECT id, name, mode FROM jobs WHERE status = 'pending' ORDER BY created_at LIMIT 1"
-        ).fetchone()
+                if not row:
+                    return None
 
-        if not row:
-            conn.close()
-            return None
+                job = dict(row)
 
-        job = dict(row)
+                # Set initial status based on mode
+                initial_status = "inferring" if job.get("mode") == "inference_only" else "labeling"
 
-        # Set initial status based on mode
-        initial_status = "inferring" if job.get("mode") == "inference_only" else "labeling"
+                # Claim it by setting status (only if still pending)
+                result = conn.execute(
+                    "UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'pending'",
+                    (initial_status, job["id"]),
+                )
+                conn.commit()
 
-        # Claim it by setting status (only if still pending)
-        result = conn.execute(
-            "UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = 'pending'",
-            (initial_status, job["id"]),
-        )
-        conn.commit()
+                if result.rowcount == 0:
+                    return None  # Someone else claimed it
 
-        if result.rowcount == 0:
-            conn.close()
-            return None  # Someone else claimed it
+                return job
+            finally:
+                conn.close()
 
-        conn.close()
-        return job
+        return _retry_on_locked(_do)

@@ -13,17 +13,21 @@ const paintings: Record<string, { src: string; caption: string }> = {
     src: "/art/monet-sandvika-snow.jpg",
     caption: "Claude Monet, Sandvika, Norway, 1895",
   },
-  billing: {
+  models: {
+    src: "/art/monet-haystacks-snow.jpg",
+    caption: "Claude Monet, Haystacks (Effect of Snow and Sun), 1891",
+  },
+  settings: {
     src: "/art/monet-impression-sunrise.jpg",
     caption: "Claude Monet, Impression, Sunrise, 1872",
   },
-  models: {
+  benchmarks: {
     src: "/art/monet-haystacks-snow.jpg",
     caption: "Claude Monet, Haystacks (Effect of Snow and Sun), 1891",
   },
 };
 
-export function ArtFooter({ page }: { page: keyof typeof paintings }) {
+export function ArtFooter({ page }: { page: string }) {
   const art = paintings[page];
   if (!art) return null;
 

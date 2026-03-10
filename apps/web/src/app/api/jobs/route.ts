@@ -3,32 +3,38 @@ import { getDb } from "@/lib/db";
 import { randomUUID } from "crypto";
 
 export async function GET() {
-  const db = getDb();
-  const jobs = db.prepare("SELECT * FROM jobs ORDER BY created_at DESC").all() as Record<string, unknown>[];
+  try {
+    const db = getDb();
+    const jobs = db.prepare("SELECT * FROM jobs ORDER BY created_at DESC").all() as Record<string, unknown>[];
 
-  for (const job of jobs) {
-    // Parse JSON columns
-    if (job.extraction_schema) job.extraction_schema = JSON.parse(job.extraction_schema as string);
+    for (const job of jobs) {
+      // Parse JSON columns
+      try { if (job.extraction_schema) job.extraction_schema = JSON.parse(job.extraction_schema as string); } catch { /* leave as string */ }
 
-    // Join labeling_model
-    if (job.labeling_model_id) {
-      job.labeling_model = db.prepare("SELECT m.*, p.name as provider_name, p.slug as provider_slug FROM eval_models m JOIN eval_providers p ON m.provider_id = p.id WHERE m.id = ?").get(job.labeling_model_id) ?? null;
-    } else {
-      job.labeling_model = null;
+      // Join labeling_model
+      if (job.labeling_model_id) {
+        job.labeling_model = db.prepare("SELECT m.*, p.name as provider_name, p.slug as provider_slug FROM eval_models m JOIN eval_providers p ON m.provider_id = p.id WHERE m.id = ?").get(job.labeling_model_id) ?? null;
+      } else {
+        job.labeling_model = null;
+      }
+
+      // Join finetune_model
+      if (job.finetune_model_id) {
+        job.finetune_model = db.prepare("SELECT * FROM finetune_models WHERE id = ?").get(job.finetune_model_id) ?? null;
+      } else {
+        job.finetune_model = null;
+      }
     }
 
-    // Join finetune_model
-    if (job.finetune_model_id) {
-      job.finetune_model = db.prepare("SELECT * FROM finetune_models WHERE id = ?").get(job.finetune_model_id) ?? null;
-    } else {
-      job.finetune_model = null;
-    }
+    return NextResponse.json(jobs);
+  } catch (err) {
+    console.error("GET /api/jobs error:", err);
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Internal server error" }, { status: 500 });
   }
-
-  return NextResponse.json(jobs);
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json();
   const {
     name,
@@ -46,7 +52,7 @@ export async function POST(req: NextRequest) {
   const db = getDb();
   const jobId = randomUUID();
 
-  const labelCount = mode === "inference_only" ? 0 : 0;
+  const labelCount = 0;
   const inferCount = 0;
 
   db.prepare(`
@@ -78,5 +84,9 @@ export async function POST(req: NextRequest) {
 
   const uploadPrefix = `jobs/${jobId}/images/`;
 
-  return NextResponse.json({ job, uploadPrefix });
+  return NextResponse.json({ job, uploadPrefix }, { status: 201 });
+  } catch (err) {
+    console.error("POST /api/jobs error:", err);
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Internal server error" }, { status: 500 });
+  }
 }

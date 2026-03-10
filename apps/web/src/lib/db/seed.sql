@@ -1,10 +1,5 @@
 -- Seed data — only runs if tables are empty
 
--- Labeling models
-INSERT OR IGNORE INTO labeling_models (id, name, api_model_id) VALUES
-  ('lm1', 'Gemini 2.5 Flash', 'gemini-2.5-flash-preview-05-20'),
-  ('lm2', 'Gemini 2.5 Pro', 'gemini-2.5-pro-preview-05-06');
-
 -- Fine-tune models
 INSERT OR IGNORE INTO finetune_models (id, name, hf_repo, gpu_type) VALUES
   ('fm1', 'GLM-OCR (0.9B)', 'zai-org/GLM-OCR', 'AMPERE_48'),

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -20,7 +21,15 @@ class LocalInferencer:
     ) -> list[tuple[str, dict]]:
         if not images:
             return []
+        return await asyncio.to_thread(self._infer_sync, job_id, job, adapter_path, images)
 
+    def _infer_sync(
+        self,
+        job_id: str,
+        job: dict,
+        adapter_path: str,
+        images: list[dict],
+    ) -> list[tuple[str, dict]]:
         schema = job["extraction_schema"]
         hf_repo = job["finetune_model"]["hf_repo"]
         adapter_full_path = str(STORAGE_DIR / adapter_path)
@@ -87,6 +96,10 @@ class LocalInferencer:
                 except Exception as e:
                     logger.error(f"Failed to infer image {img['id']}: {e}")
                     results.append((img["id"], {k: None for k in schema}))
+
+            # Free GPU memory
+            del model, base_model
+            torch.cuda.empty_cache()
 
             return results
 

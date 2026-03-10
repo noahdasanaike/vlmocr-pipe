@@ -19,6 +19,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing url or jobId" }, { status: 400 });
   }
 
+  // Block SSRF: only allow http(s) with public hostnames
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return NextResponse.json({ error: "Only HTTP/HTTPS URLs are allowed" }, { status: 400 });
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host === "::1" ||
+      host.startsWith("10.") ||
+      host.startsWith("192.168.") ||
+      host.startsWith("172.") ||
+      host === "169.254.169.254" ||
+      host.endsWith(".internal") ||
+      host.endsWith(".local")
+    ) {
+      return NextResponse.json({ error: "Internal/private URLs are not allowed" }, { status: 400 });
+    }
+  } catch {
+    return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+  }
+
   const db = getDb();
 
   // Verify job exists

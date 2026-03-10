@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "vlmocr-pipe — VLM Digitization Pipeline",
   description:
-    "Upload document images, auto-label with Gemini, fine-tune an open-source VLM, and extract structured data at scale.",
+    "Upload document images, auto-label with any VLM, fine-tune an open-source model, and extract structured data at scale.",
 };
 
 export default function RootLayout({

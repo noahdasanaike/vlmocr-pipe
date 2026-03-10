@@ -22,7 +22,7 @@ import {
 import { ImageViewer } from "@/components/image-viewer";
 import { ArtFooter } from "@/components/art-footer";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Download, Loader2, Images, Tag, Cpu, Terminal, Play, Copy, Check, Square, Trash2, RotateCcw, Eye, BarChart3, Database, Pause } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Images, Tag, Cpu, Terminal, Play, Check, Square, Trash2, RotateCcw, Eye, BarChart3, Database, Pause } from "lucide-react";
 import type { Job, JobImage, JobStatus } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -60,7 +60,6 @@ export default function JobDetailPage({
   const [job, setJob] = useState<Job | null>(null);
   const [images, setImages] = useState<JobImage[]>([]);
   const [starting, setStarting] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [viewerImage, setViewerImage] = useState<JobImage | null>(null);
@@ -491,7 +490,7 @@ export default function JobDetailPage({
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <h3 className="text-sm font-medium text-slate-900 mb-2">Create Benchmark Dataset</h3>
           <p className="text-xs text-slate-500 mb-3">
-            Use this job&apos;s labeled images as a benchmark dataset. Gemini labels will serve as ground truth.
+            Use this job&apos;s labeled images as a benchmark dataset. Auto-labels will serve as ground truth.
           </p>
           <Button
             variant="outline"
