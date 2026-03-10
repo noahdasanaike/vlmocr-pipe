@@ -289,6 +289,14 @@ async def call_model(
 
         text = data["choices"][0]["message"]["content"].strip()
 
+        # Check for truncation (max_tokens hit)
+        finish_reason = data["choices"][0].get("finish_reason", "")
+        if finish_reason == "length":
+            logger.warning(
+                f"Model {model_api_id} output truncated (finish_reason=length). "
+                f"Response may be incomplete. Last 100 chars: ...{text[-100:]}"
+            )
+
         # dots.ocr outputs JSON with HTML tables
         if "dots.ocr" in model_api_id or "dots-ocr" in model_api_id:
             text = parse_dots_ocr_output(text)

@@ -61,8 +61,13 @@ class PipelineOrchestrator:
             f"No explanation, just the JSON."
         )
 
-        inferred_count = 0
-        for img in all_images:
+        # Skip already-inferred images (resumption support)
+        pending_images = [img for img in all_images if img.get("infer_status") != "complete"]
+        inferred_count = len(all_images) - len(pending_images)
+        if inferred_count > 0:
+            logger.info(f"Skipping {inferred_count} already-inferred images")
+
+        for img in pending_images:
             # Check for cancellation
             current = self.storage.get_job(job_id)
             if current["status"] == "cancelled":
@@ -86,7 +91,15 @@ class PipelineOrchestrator:
                     # Try to extract JSON from markdown code block
                     import re
                     match = re.search(r'\{[^{}]*\}', predicted_text, re.DOTALL)
-                    predicted_result = json.loads(match.group()) if match else {k: predicted_text for k in schema}
+                    if match:
+                        try:
+                            predicted_result = json.loads(match.group())
+                        except json.JSONDecodeError:
+                            logger.warning(f"Truncated output for {img['filename']}: {predicted_text[:200]}")
+                            predicted_result = {k: None for k in schema}
+                    else:
+                        logger.warning(f"No JSON in output for {img['filename']}: {predicted_text[:200]}")
+                        predicted_result = {k: None for k in schema}
 
                 self.storage.update_image(
                     img["id"],
@@ -186,10 +199,15 @@ class PipelineOrchestrator:
         await self.update_job_status(job_id, "inferring")
         infer_images = self.storage.get_images(job_id, role="infer_target")
 
-        inferred_count = 0
+        # Skip already-inferred images (resumption support)
+        pending_infer = [img for img in infer_images if img.get("infer_status") != "complete"]
+        inferred_count = len(infer_images) - len(pending_infer)
+        if inferred_count > 0:
+            logger.info(f"Skipping {inferred_count} already-inferred images")
+
         try:
             results = await self.inferencer.infer_batch(
-                job_id, job, adapter_path, infer_images
+                job_id, job, adapter_path, pending_infer
             )
             for img_id, result in results:
                 self.storage.update_image(

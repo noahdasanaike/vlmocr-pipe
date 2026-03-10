@@ -79,10 +79,18 @@ class BenchmarkOrchestrator:
 
             self.storage.update_run_model(rm["id"], status="running")
 
-            completed_for_model = 0
-            error_count = 0
+            # Skip already-completed samples (resumption support)
+            done_sample_ids = self.storage.get_completed_benchmark_sample_ids(rm["id"])
+            pending_samples = [s for s in samples if s["id"] not in done_sample_ids]
+            skipped = len(samples) - len(pending_samples)
+            if skipped > 0:
+                logger.info(f"Skipping {skipped} already-benchmarked samples for model {model.get('name', rm['id'])}")
 
-            for sample in samples:
+            completed_for_model = skipped
+            error_count = 0
+            completed_total += skipped
+
+            for sample in pending_samples:
                 # Check for cancellation
                 current = self.storage.get_benchmark_run(run_id)
                 if current["status"] == "cancelled":

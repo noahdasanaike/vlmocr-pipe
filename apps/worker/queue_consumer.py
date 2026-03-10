@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 from pipeline.storage import StorageClient
 from pipeline.orchestrator import PipelineOrchestrator
@@ -8,6 +9,7 @@ from pipeline.benchmark_orchestrator import BenchmarkOrchestrator
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = 5  # seconds
+STALE_RECOVERY_INTERVAL = 60  # seconds
 
 
 class QueueConsumer:
@@ -16,11 +18,60 @@ class QueueConsumer:
         self.orchestrator = PipelineOrchestrator()
         self.benchmark_orchestrator = BenchmarkOrchestrator()
 
+    def _recover_stale_jobs(self):
+        """Reset jobs and benchmark runs stuck in active states back to pending."""
+        conn = self.storage._get_conn()
+        try:
+            # Recover stale fine-tuning jobs
+            stale_jobs = conn.execute(
+                "SELECT id, name, status FROM jobs "
+                "WHERE status IN ('labeling', 'training', 'inferring') "
+                "AND updated_at < datetime('now', '-10 minutes')"
+            ).fetchall()
+
+            for job in stale_jobs:
+                conn.execute(
+                    "UPDATE jobs SET status = 'pending', updated_at = datetime('now') WHERE id = ?",
+                    (job["id"],),
+                )
+                logger.warning(
+                    f"Recovered stale job {job['id']} ({job['name']}) from '{job['status']}' -> 'pending'"
+                )
+
+            # Recover stale benchmark runs
+            stale_runs = conn.execute(
+                "SELECT id, name FROM benchmark_runs "
+                "WHERE status = 'running' "
+                "AND updated_at < datetime('now', '-10 minutes')"
+            ).fetchall()
+
+            for run in stale_runs:
+                conn.execute(
+                    "UPDATE benchmark_runs SET status = 'pending', updated_at = datetime('now') WHERE id = ?",
+                    (run["id"],),
+                )
+                logger.warning(
+                    f"Recovered stale benchmark run {run['id']} ({run['name']}) from 'running' -> 'pending'"
+                )
+
+            conn.commit()
+        finally:
+            conn.close()
+
     async def run(self):
         logger.info("Queue consumer starting (DB polling mode)...")
 
+        self._recover_stale_jobs()
+        last_recovery = time.monotonic()
+
         while True:
             try:
+                # Periodic stale job recovery
+                now = time.monotonic()
+                if now - last_recovery >= STALE_RECOVERY_INTERVAL:
+                    self._recover_stale_jobs()
+                    last_recovery = now
+
                 # Check for pending fine-tuning jobs
                 job = self._claim_next_job()
                 if job is not None:

@@ -56,9 +56,14 @@ Return valid JSON only, no markdown formatting."""
             # Try to extract JSON from response
             match = re.search(r'\{[\s\S]*\}', text)
             if match:
-                result = json.loads(match.group())
+                try:
+                    result = json.loads(match.group())
+                except json.JSONDecodeError:
+                    logger.warning(f"Truncated/malformed model output, returning nulls: {text[:200]}")
+                    result = {k: None for k in schema}
             else:
-                raise RuntimeError(f"Could not parse JSON from model response: {text[:200]}")
+                logger.warning(f"No JSON found in model output, returning nulls: {text[:200]}")
+                result = {k: None for k in schema}
 
         if isinstance(result, list):
             result = result[0] if result else {}

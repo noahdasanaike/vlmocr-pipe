@@ -1,10 +1,28 @@
 import os
 import json
+import time
 import sqlite3
 import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+SQLITE_BUSY_TIMEOUT = 5000  # ms
+MAX_RETRIES = 3
+RETRY_DELAY = 0.5  # seconds
+
+
+def _retry_on_locked(fn, max_retries=MAX_RETRIES):
+    """Retry a database operation if SQLite is locked."""
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower() and attempt < max_retries - 1:
+                logger.warning(f"SQLite locked, retrying in {RETRY_DELAY * (attempt + 1)}s (attempt {attempt + 1})")
+                time.sleep(RETRY_DELAY * (attempt + 1))
+            else:
+                raise
 
 # Find the data directory (same SQLite DB as the web app)
 def _find_data_dir():
@@ -27,6 +45,8 @@ class StorageClient:
         conn = sqlite3.connect(str(DB_PATH))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT}")
+        conn.execute("PRAGMA journal_mode = WAL")
         return conn
 
     def get_db(self):
@@ -47,27 +67,31 @@ class StorageClient:
 
     # DB operations
     def update_job(self, job_id: str, **kwargs):
-        conn = self._get_conn()
-        sets = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values()) + [job_id]
-        conn.execute(f"UPDATE jobs SET {sets}, updated_at = datetime('now') WHERE id = ?", values)
-        conn.commit()
-        conn.close()
+        def _do():
+            conn = self._get_conn()
+            sets = ", ".join(f"{k} = ?" for k in kwargs)
+            values = list(kwargs.values()) + [job_id]
+            conn.execute(f"UPDATE jobs SET {sets}, updated_at = datetime('now') WHERE id = ?", values)
+            conn.commit()
+            conn.close()
+        _retry_on_locked(_do)
 
     def update_image(self, image_id: str, **kwargs):
-        conn = self._get_conn()
-        # JSON-encode dict values
-        processed = {}
-        for k, v in kwargs.items():
-            if isinstance(v, dict):
-                processed[k] = json.dumps(v)
-            else:
-                processed[k] = v
-        sets = ", ".join(f"{k} = ?" for k in processed)
-        values = list(processed.values()) + [image_id]
-        conn.execute(f"UPDATE images SET {sets} WHERE id = ?", values)
-        conn.commit()
-        conn.close()
+        def _do():
+            conn = self._get_conn()
+            # JSON-encode dict values
+            processed = {}
+            for k, v in kwargs.items():
+                if isinstance(v, dict):
+                    processed[k] = json.dumps(v)
+                else:
+                    processed[k] = v
+            sets = ", ".join(f"{k} = ?" for k in processed)
+            values = list(processed.values()) + [image_id]
+            conn.execute(f"UPDATE images SET {sets} WHERE id = ?", values)
+            conn.commit()
+            conn.close()
+        _retry_on_locked(_do)
 
     def get_job(self, job_id: str) -> dict:
         conn = self._get_conn()
@@ -165,32 +189,38 @@ class StorageClient:
 
     def insert_benchmark_result(self, run_model_id: str, sample_id: str, **kwargs) -> dict:
         import uuid
-        conn = self._get_conn()
         result_id = str(uuid.uuid4())
-        cols = ["id", "run_model_id", "sample_id"] + list(kwargs.keys())
-        placeholders = ", ".join(["?"] * len(cols))
-        col_str = ", ".join(cols)
-        values = [result_id, run_model_id, sample_id] + list(kwargs.values())
-        conn.execute(f"INSERT INTO benchmark_results ({col_str}) VALUES ({placeholders})", values)
-        conn.commit()
-        conn.close()
+        def _do():
+            conn = self._get_conn()
+            cols = ["id", "run_model_id", "sample_id"] + list(kwargs.keys())
+            placeholders = ", ".join(["?"] * len(cols))
+            col_str = ", ".join(cols)
+            values = [result_id, run_model_id, sample_id] + list(kwargs.values())
+            conn.execute(f"INSERT INTO benchmark_results ({col_str}) VALUES ({placeholders})", values)
+            conn.commit()
+            conn.close()
+        _retry_on_locked(_do)
         return {"id": result_id, "run_model_id": run_model_id, "sample_id": sample_id, **kwargs}
 
     def update_run_model(self, run_model_id: str, **kwargs):
-        conn = self._get_conn()
-        sets = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values()) + [run_model_id]
-        conn.execute(f"UPDATE benchmark_run_models SET {sets} WHERE id = ?", values)
-        conn.commit()
-        conn.close()
+        def _do():
+            conn = self._get_conn()
+            sets = ", ".join(f"{k} = ?" for k in kwargs)
+            values = list(kwargs.values()) + [run_model_id]
+            conn.execute(f"UPDATE benchmark_run_models SET {sets} WHERE id = ?", values)
+            conn.commit()
+            conn.close()
+        _retry_on_locked(_do)
 
     def update_benchmark_run(self, run_id: str, **kwargs):
-        conn = self._get_conn()
-        sets = ", ".join(f"{k} = ?" for k in kwargs)
-        values = list(kwargs.values()) + [run_id]
-        conn.execute(f"UPDATE benchmark_runs SET {sets}, updated_at = datetime('now') WHERE id = ?", values)
-        conn.commit()
-        conn.close()
+        def _do():
+            conn = self._get_conn()
+            sets = ", ".join(f"{k} = ?" for k in kwargs)
+            values = list(kwargs.values()) + [run_id]
+            conn.execute(f"UPDATE benchmark_runs SET {sets}, updated_at = datetime('now') WHERE id = ?", values)
+            conn.commit()
+            conn.close()
+        _retry_on_locked(_do)
 
     def claim_benchmark_run(self) -> dict | None:
         conn = self._get_conn()
@@ -206,6 +236,16 @@ class StorageClient:
             return None
         conn.close()
         return run
+
+    def get_completed_benchmark_sample_ids(self, run_model_id: str) -> set[str]:
+        """Return set of sample_ids that already have a benchmark_result for this run_model."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT sample_id FROM benchmark_results WHERE run_model_id = ?",
+            (run_model_id,),
+        ).fetchall()
+        conn.close()
+        return {r["sample_id"] for r in rows}
 
     def get_benchmark_results_for_run_model(self, run_model_id: str) -> list[dict]:
         conn = self._get_conn()
