@@ -5,20 +5,25 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 function getProviderApiKey(slug: string): string | null {
-  // Check DB settings first, then fall back to env vars
-  const settingKey = `${slug}_api_key`;
-  const fromDb = dbHelper.getSetting(settingKey);
-  if (fromDb) return fromDb;
-
-  const envMap: Record<string, string> = {
+  const keyMap: Record<string, string> = {
     openrouter: "OPENROUTER_API_KEY",
     deepinfra: "DEEPINFRA_API_KEY",
     novita: "NOVITA_API_KEY",
     dashscope: "DASHSCOPE_API_KEY",
+    replicate: "REPLICATE_API_TOKEN",
     google: "GEMINI_API_KEY",
+    qubrid: "QUBRID_API_KEY",
+    zenmux: "ZENMUX_API_KEY",
+    ollama: "OLLAMA_API_KEY",
+    vllm: "VLLM_API_KEY",
   };
-  const envKey = envMap[slug];
-  return envKey ? (process.env[envKey] ?? null) : null;
+  // Local providers don't need API keys
+  if (slug === "ollama" || slug === "vllm") return "no-key-needed";
+  const settingKey = keyMap[slug] ?? `${slug.toUpperCase()}_API_KEY`;
+  // Check DB settings first, then fall back to env vars
+  const fromDb = dbHelper.getSetting(settingKey);
+  if (fromDb) return fromDb;
+  return process.env[settingKey] ?? null;
 }
 
 function buildPayload(
@@ -77,6 +82,18 @@ function buildPayload(
     if (modelApiId.includes("qwen3.5")) {
       payload.chat_template_kwargs = { enable_thinking: false };
     }
+  } else if (providerSlug === "ollama") {
+    payload.max_tokens = 4096;
+  } else if (providerSlug === "vllm") {
+    payload.max_tokens = 4096;
+  }
+  // qubrid, zenmux, google: standard OpenAI-compatible, defaults work
+
+  // HunyuanOCR only accepts image, no text prompt
+  if (modelApiId.includes("HunyuanOCR")) {
+    messages[0].content = [
+      { type: "image_url" as const, image_url: { url: dataUri } },
+    ];
   }
 
   return payload;

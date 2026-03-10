@@ -120,6 +120,10 @@ def _get_api_key(provider_slug: str) -> str:
         "dashscope": "DASHSCOPE_API_KEY",
         "replicate": "REPLICATE_API_TOKEN",
         "google": "GEMINI_API_KEY",
+        "qubrid": "QUBRID_API_KEY",
+        "zenmux": "ZENMUX_API_KEY",
+        "ollama": "OLLAMA_API_KEY",
+        "vllm": "VLLM_API_KEY",
     }
     var = env_map.get(provider_slug, f"{provider_slug.upper()}_API_KEY")
     # Check env first, then DB settings
@@ -132,6 +136,9 @@ def _get_api_key(provider_slug: str) -> str:
         except Exception:
             pass
     if not key:
+        # Local providers (ollama, vllm) don't require API keys
+        if provider_slug in ("ollama", "vllm"):
+            return "no-key-needed"
         raise RuntimeError(f"Missing API key: {var}. Set it in Settings or as an environment variable.")
     return key
 
@@ -244,6 +251,20 @@ async def call_model(
 
     elif provider_slug == "google":
         pass  # Gemini's OpenAI-compatible endpoint works with standard payloads
+
+    elif provider_slug == "qubrid":
+        pass  # Standard OpenAI-compatible endpoint
+
+    elif provider_slug == "zenmux":
+        pass  # Standard OpenAI-compatible endpoint
+
+    elif provider_slug == "ollama":
+        payload["max_tokens"] = max(max_tokens, 4096)
+        if "qwen3.5" in model_api_id:
+            payload["options"] = {"num_predict": 4096}
+
+    elif provider_slug == "vllm":
+        payload["max_tokens"] = max(max_tokens, 4096)
 
     elif provider_slug == "replicate":
         return await _call_replicate(model_api_id, image_bytes, filename, api_key, retries)

@@ -19,7 +19,11 @@ INSERT OR IGNORE INTO eval_providers (id, name, slug, base_url) VALUES
   ('p3', 'Novita', 'novita', 'https://api.novita.ai/openai/chat/completions'),
   ('p4', 'DashScope', 'dashscope', 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions'),
   ('p5', 'Replicate', 'replicate', 'https://api.replicate.com/v1/predictions'),
-  ('p6', 'Google AI Studio', 'google', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+  ('p6', 'Google AI Studio', 'google', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
+  ('p7', 'Qubrid', 'qubrid', 'https://platform.qubrid.com/v1/chat/completions'),
+  ('p8', 'ZenMux', 'zenmux', 'https://zenmux.ai/api/v1/chat/completions'),
+  ('p9', 'Ollama (Local)', 'ollama', 'http://localhost:11434/v1/chat/completions'),
+  ('p10', 'vLLM (Local)', 'vllm', 'http://localhost:8000/v1/chat/completions');
 
 -- Eval models
 INSERT OR IGNORE INTO eval_models (id, provider_id, name, api_model_id, cost_per_image_credits, config) VALUES
@@ -49,5 +53,20 @@ INSERT OR IGNORE INTO eval_models (id, provider_id, name, api_model_id, cost_per
   ('m27', 'p4', 'Qwen3.5 27B', 'qwen3.5-27b', 0.5, '{"thinking":false}'),
   ('m28', 'p4', 'Qwen3.5 122B', 'qwen3.5-122b-a10b', 1, '{"thinking":false}'),
   ('m17', 'p5', 'dots.ocr', 'sljeff/dots.ocr:214a4fc47a5e8254ae83362a34271feeb53c5e61d9bc8aadcf96a5d8717be4d6', 0.5, '{}'),
+  ('m12', 'p2', 'Nemotron Nano 12B', 'nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL', 0.5, '{}'),
+  ('m19', 'p1', 'Gemini 3.1 Pro', 'google/gemini-3.1-pro-preview', 2, '{"reasoning_effort":"low"}'),
   ('m30', 'p6', 'Gemini 2.5 Flash', 'gemini-2.5-flash-preview-05-20', 1, '{}'),
-  ('m31', 'p6', 'Gemini 2.5 Pro', 'gemini-2.5-pro-preview-05-06', 2, '{}');
+  ('m31', 'p6', 'Gemini 2.5 Pro', 'gemini-2.5-pro-preview-05-06', 2, '{}'),
+  ('m32', 'p1', 'GPT-5.3 Codex', 'openai/gpt-5.3-codex', 3, '{"reasoning_effort":"low"}'),
+  ('m33', 'p1', 'GPT-5.4', 'openai/gpt-5.4', 3, '{"reasoning_effort":"low"}'),
+  ('m34', 'p1', 'Claude Opus 4.6', 'anthropic/claude-opus-4.6', 5, '{}'),
+  ('m35', 'p1', 'Molmo 2 8B', 'allenai/molmo-2-8b', 0.5, '{}'),
+  ('m36', 'p1', 'Gemma 3 4B', 'google/gemma-3-4b-it', 0.25, '{}'),
+  ('m37', 'p1', 'Gemma 3 27B', 'google/gemma-3-27b-it', 1, '{}'),
+  ('m38', 'p1', 'Gemini 3.1 Flash', 'google/gemini-3.1-flash-image-preview', 1, '{}'),
+  ('m39', 'p7', 'HunyuanOCR', 'tencent/HunyuanOCR', 1, '{}'),
+  ('m40', 'p8', 'Seed 2.0 Pro', 'volcengine/doubao-seed-2.0-pro', 2, '{}'),
+  ('m41', 'p8', 'Seed 2.0 Lite', 'volcengine/doubao-seed-2.0-lite', 1, '{}'),
+  ('m42', 'p9', 'LightOnOCR2', 'maternion/LightOnOCR-2', 0, '{}'),
+  ('m43', 'p9', 'Qwen3.5 2B (Ollama)', 'qwen3.5:2b', 0, '{"thinking":false}'),
+  ('m44', 'p10', 'dots.ocr 1.5', 'model', 0, '{}');

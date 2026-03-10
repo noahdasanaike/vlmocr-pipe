@@ -44,6 +44,16 @@ const providers: ProviderConfig[] = [
     settingKey: "REPLICATE_API_TOKEN",
     description: "Replicate API token for running models.",
   },
+  {
+    name: "Qubrid",
+    settingKey: "QUBRID_API_KEY",
+    description: "Qubrid API key for HunyuanOCR and other models.",
+  },
+  {
+    name: "ZenMux",
+    settingKey: "ZENMUX_API_KEY",
+    description: "ZenMux API key for Seed 2.0 models.",
+  },
 ];
 
 export default function SettingsPage() {

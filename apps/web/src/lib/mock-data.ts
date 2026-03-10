@@ -7,6 +7,10 @@ export const MOCK_PROVIDERS = [
   { id: "p4", name: "DashScope", slug: "dashscope", base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions", is_active: true },
   { id: "p5", name: "Replicate", slug: "replicate", base_url: "https://api.replicate.com/v1/predictions", is_active: true },
   { id: "p6", name: "Google AI Studio", slug: "google", base_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", is_active: true },
+  { id: "p7", name: "Qubrid", slug: "qubrid", base_url: "https://platform.qubrid.com/v1/chat/completions", is_active: true },
+  { id: "p8", name: "ZenMux", slug: "zenmux", base_url: "https://zenmux.ai/api/v1/chat/completions", is_active: true },
+  { id: "p9", name: "Ollama (Local)", slug: "ollama", base_url: "http://localhost:11434/v1/chat/completions", is_active: true },
+  { id: "p10", name: "vLLM (Local)", slug: "vllm", base_url: "http://localhost:8000/v1/chat/completions", is_active: true },
 ];
 
 export const MOCK_MODELS = [
@@ -46,6 +50,24 @@ export const MOCK_MODELS = [
   // Google AI Studio models
   { id: "m30", provider_id: "p6", name: "Gemini 2.5 Flash", api_model_id: "gemini-2.5-flash-preview-05-20", cost_per_image_credits: 1, config: {}, is_active: true },
   { id: "m31", provider_id: "p6", name: "Gemini 2.5 Pro", api_model_id: "gemini-2.5-pro-preview-05-06", cost_per_image_credits: 2, config: {}, is_active: true },
+  // OpenRouter — additional models
+  { id: "m32", provider_id: "p1", name: "GPT-5.3 Codex", api_model_id: "openai/gpt-5.3-codex", cost_per_image_credits: 3, config: { reasoning_effort: "low" }, is_active: true },
+  { id: "m33", provider_id: "p1", name: "GPT-5.4", api_model_id: "openai/gpt-5.4", cost_per_image_credits: 3, config: { reasoning_effort: "low" }, is_active: true },
+  { id: "m34", provider_id: "p1", name: "Claude Opus 4.6", api_model_id: "anthropic/claude-opus-4.6", cost_per_image_credits: 5, config: {}, is_active: true },
+  { id: "m35", provider_id: "p1", name: "Molmo 2 8B", api_model_id: "allenai/molmo-2-8b", cost_per_image_credits: 0.5, config: {}, is_active: true },
+  { id: "m36", provider_id: "p1", name: "Gemma 3 4B", api_model_id: "google/gemma-3-4b-it", cost_per_image_credits: 0.25, config: {}, is_active: true },
+  { id: "m37", provider_id: "p1", name: "Gemma 3 27B", api_model_id: "google/gemma-3-27b-it", cost_per_image_credits: 1, config: {}, is_active: true },
+  { id: "m38", provider_id: "p1", name: "Gemini 3.1 Flash", api_model_id: "google/gemini-3.1-flash-image-preview", cost_per_image_credits: 1, config: {}, is_active: true },
+  // Qubrid models
+  { id: "m39", provider_id: "p7", name: "HunyuanOCR", api_model_id: "tencent/HunyuanOCR", cost_per_image_credits: 1, config: {}, is_active: true },
+  // ZenMux models
+  { id: "m40", provider_id: "p8", name: "Seed 2.0 Pro", api_model_id: "volcengine/doubao-seed-2.0-pro", cost_per_image_credits: 2, config: {}, is_active: true },
+  { id: "m41", provider_id: "p8", name: "Seed 2.0 Lite", api_model_id: "volcengine/doubao-seed-2.0-lite", cost_per_image_credits: 1, config: {}, is_active: true },
+  // Ollama (local) models
+  { id: "m42", provider_id: "p9", name: "LightOnOCR2", api_model_id: "maternion/LightOnOCR-2", cost_per_image_credits: 0, config: {}, is_active: true },
+  { id: "m43", provider_id: "p9", name: "Qwen3.5 2B (Ollama)", api_model_id: "qwen3.5:2b", cost_per_image_credits: 0, config: { thinking: false }, is_active: true },
+  // vLLM (local) models
+  { id: "m44", provider_id: "p10", name: "dots.ocr 1.5", api_model_id: "model", cost_per_image_credits: 0, config: {}, is_active: true },
 ];
 
 export const MOCK_DATASETS = [
