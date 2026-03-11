@@ -22,7 +22,7 @@ import {
 import { ImageViewer } from "@/components/image-viewer";
 import { ArtFooter } from "@/components/art-footer";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Download, Loader2, Images, Tag, Cpu, Terminal, Play, Check, Square, Trash2, RotateCcw, Eye, BarChart3, Database, Pause } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Images, Tag, Cpu, Terminal, Play, Check, Square, Trash2, RotateCcw, Eye, BarChart3, Database, Pause, FolderOpen } from "lucide-react";
 import type { Job, JobImage, JobStatus } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -291,6 +291,27 @@ export default function JobDetailPage({
               Retry
             </Button>
           )}
+
+          {/* Open local folder */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-lg text-xs h-8 text-slate-600"
+            onClick={async () => {
+              try {
+                const res = await fetch(`/api/jobs/${id}/open-folder`, { method: "POST" });
+                if (!res.ok) {
+                  const err = await res.json().catch(() => ({ error: "Failed" }));
+                  toast.error(err.error || "Could not open folder");
+                }
+              } catch {
+                toast.error("Could not open folder");
+              }
+            }}
+          >
+            <FolderOpen className="mr-1.5 h-3 w-3" />
+            Open Folder
+          </Button>
 
           {/* Delete — always available */}
           {!showDeleteConfirm ? (
