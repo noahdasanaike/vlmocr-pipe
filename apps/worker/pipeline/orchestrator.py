@@ -14,6 +14,19 @@ from pipeline.evaluator import call_model
 logger = logging.getLogger(__name__)
 
 
+def _build_json_schema(extraction_schema: dict[str, str]) -> dict:
+    """Convert extraction_schema {field: description} into a JSON Schema object."""
+    properties = {}
+    for field, desc in extraction_schema.items():
+        properties[field] = {"type": "string", "description": desc}
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(extraction_schema.keys()),
+        "additionalProperties": False,
+    }
+
+
 class PipelineOrchestrator:
     def __init__(self):
         self.storage = StorageClient()
@@ -61,6 +74,10 @@ class PipelineOrchestrator:
         job_config = json.loads(job.get("model_config") or "{}") if isinstance(job.get("model_config"), str) else job.get("model_config", {})
         if job_config:
             model_config = {**model_config, **job_config}
+
+        # Build JSON Schema for structured output if enabled
+        if model_config.pop("structured_output", False):
+            model_config["json_schema"] = _build_json_schema(schema)
 
         # Build extraction prompt from schema
         fields_desc = "\n".join(
@@ -160,6 +177,10 @@ class PipelineOrchestrator:
         job_config = json.loads(job.get("model_config") or "{}") if isinstance(job.get("model_config"), str) else job.get("model_config", {})
         if job_config:
             label_model_config = {**label_model_config, **job_config}
+
+        # Build JSON Schema for structured output if enabled
+        if label_model_config.pop("structured_output", False):
+            label_model_config["json_schema"] = _build_json_schema(schema)
 
         # Count already-labeled images (from previous runs)
         labeled_count = sum(1 for img in label_images if img.get("gemini_label"))

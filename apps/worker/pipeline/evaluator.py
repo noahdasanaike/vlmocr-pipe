@@ -165,6 +165,7 @@ async def call_model(
     config = config or {}
     reasoning_effort = config.get("reasoning_effort", "low")
     thinking = config.get("thinking", False)
+    json_schema = config.get("json_schema")
     data_uri = _encode_image_bytes(image_bytes, filename)
 
     # ── Build content based on model-specific requirements ───────
@@ -223,8 +224,19 @@ async def call_model(
         elif "gemini-3" in model_api_id and "image-preview" not in model_api_id:
             payload["max_tokens"] = max(max_tokens * 16, 8192)
 
+        # Structured output via response_format (passed through to underlying model)
+        if json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "extraction", "schema": json_schema},
+            }
+
     elif provider_slug == "deepinfra":
-        pass  # defaults work
+        if json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "extraction", "schema": json_schema},
+            }
 
     elif provider_slug == "novita":
         payload["max_tokens"] = 4096
@@ -234,6 +246,11 @@ async def call_model(
             else:
                 payload["chat_template_kwargs"] = {"enable_thinking": False}
                 payload["max_tokens"] = 16384
+        if json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "extraction", "schema": json_schema},
+            }
 
     elif provider_slug == "dashscope":
         if "qwen-vl-ocr" in model_api_id:
@@ -249,10 +266,14 @@ async def call_model(
             else:
                 payload["enable_thinking"] = False
                 payload["max_tokens"] = 16384
+        if json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "extraction", "schema": json_schema},
+            }
 
     elif provider_slug == "google":
         media_resolution = config.get("media_resolution")
-        json_schema = config.get("json_schema")
 
         # If media_resolution is requested, use the native Gemini API instead
         # of the OpenAI-compatible endpoint (media_resolution is not supported
@@ -299,6 +320,11 @@ async def call_model(
 
     elif provider_slug == "vllm":
         payload["max_tokens"] = max(max_tokens, 4096)
+        if json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "extraction", "schema": json_schema},
+            }
 
     elif provider_slug == "replicate":
         return await _call_replicate(model_api_id, image_bytes, filename, api_key, retries)

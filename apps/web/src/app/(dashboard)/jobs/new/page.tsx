@@ -105,9 +105,10 @@ export default function NewJobPage() {
   const [labelRatio, setLabelRatio] = useState(30);
   const [schema, setSchema] = useState<ExtractionSchema>({ name: "Person's full name" });
 
-  // Google-specific model config overrides
+  // Model config overrides
   const [reasoningEffort, setReasoningEffort] = useState("low");
   const [mediaResolution, setMediaResolution] = useState("");
+  const [structuredOutput, setStructuredOutput] = useState(false);
 
   useEffect(() => {
     async function loadModels() {
@@ -370,6 +371,7 @@ export default function NewJobPage() {
     ? selectedEvalProvider?.slug
     : labelingModels.find((m) => m.id === selectedLabelModel)?.provider_slug;
   const isGoogleModel = activeProviderSlug === "google";
+  const supportsStructuredOutput = ["google", "openrouter", "deepinfra", "dashscope", "novita", "vllm"].includes(activeProviderSlug ?? "");
 
   const labelCount = jobMode === "inference_only" ? 0 : Math.ceil(images.length * (labelRatio / 100));
   const inferCount = jobMode === "inference_only" ? images.length : images.length - labelCount;
@@ -406,6 +408,7 @@ export default function NewJobPage() {
         model_config: {
           ...(reasoningEffort !== "low" ? { reasoning_effort: reasoningEffort } : {}),
           ...(mediaResolution && mediaResolution !== "default" ? { media_resolution: mediaResolution } : {}),
+          ...(structuredOutput ? { structured_output: true } : {}),
         },
       };
 
@@ -949,6 +952,27 @@ export default function NewJobPage() {
             </div>
           )}
 
+          {/* Structured Outputs toggle — shown for providers that support it */}
+          {supportsStructuredOutput && (
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+              <div>
+                <p className="text-sm font-medium text-slate-700">Structured Outputs</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Force model to return valid JSON matching your schema. Not all models support this.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={structuredOutput}
+                onClick={() => setStructuredOutput(!structuredOutput)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${structuredOutput ? "bg-indigo-600" : "bg-slate-300"}`}
+              >
+                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${structuredOutput ? "translate-x-[18px]" : "translate-x-[2px]"}`} />
+              </button>
+            </div>
+          )}
+
           <div className="border-t border-slate-100 pt-5 space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium text-slate-700">Extraction Schema</Label>
@@ -1207,7 +1231,7 @@ export default function NewJobPage() {
             )}
           </div>
 
-          {(reasoningEffort !== "low" || (mediaResolution && mediaResolution !== "default")) && (
+          {(reasoningEffort !== "low" || (mediaResolution && mediaResolution !== "default") || structuredOutput) && (
             <div className="border-t border-slate-100 pt-4">
               <p className="text-xs text-slate-400 mb-2">Model Config</p>
               <div className="flex flex-wrap gap-2">
@@ -1216,6 +1240,9 @@ export default function NewJobPage() {
                 )}
                 {mediaResolution && mediaResolution !== "default" && (
                   <ReviewItem label="Image Resolution" value={mediaResolution} />
+                )}
+                {structuredOutput && (
+                  <ReviewItem label="Structured Outputs" value="Enabled" />
                 )}
               </div>
             </div>
