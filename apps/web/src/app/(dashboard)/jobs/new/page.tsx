@@ -105,6 +105,10 @@ export default function NewJobPage() {
   const [labelRatio, setLabelRatio] = useState(30);
   const [schema, setSchema] = useState<ExtractionSchema>({ name: "Person's full name" });
 
+  // Google-specific model config overrides
+  const [reasoningEffort, setReasoningEffort] = useState("low");
+  const [mediaResolution, setMediaResolution] = useState("");
+
   useEffect(() => {
     async function loadModels() {
       try {
@@ -361,6 +365,12 @@ export default function NewJobPage() {
   const selectedEvalModelObj = allEvalModels.find((m) => m.id === selectedEvalModel);
   const selectedEvalProvider = evalProviders.find((p) => p.models.some((m) => m.id === selectedEvalModel));
 
+  // Determine if the active model is Google (to show thinking/resolution controls)
+  const activeProviderSlug = jobMode === "inference_only"
+    ? selectedEvalProvider?.slug
+    : labelingModels.find((m) => m.id === selectedLabelModel)?.provider_slug;
+  const isGoogleModel = activeProviderSlug === "google";
+
   const labelCount = jobMode === "inference_only" ? 0 : Math.ceil(images.length * (labelRatio / 100));
   const inferCount = jobMode === "inference_only" ? images.length : images.length - labelCount;
   const selectedLM = labelingModels.find((m) => m.id === selectedLabelModel);
@@ -393,6 +403,10 @@ export default function NewJobPage() {
           eval_model_provider_slug: selectedEvalProvider.slug,
           eval_model_provider_base_url: selectedEvalProvider.base_url,
         } : {}),
+        model_config: {
+          ...(reasoningEffort !== "low" ? { reasoning_effort: reasoningEffort } : {}),
+          ...(mediaResolution && mediaResolution !== "default" ? { media_resolution: mediaResolution } : {}),
+        },
       };
 
       // Create job
@@ -896,6 +910,45 @@ export default function NewJobPage() {
             </div>
           )}
 
+          {/* Google model config: reasoning effort + media resolution */}
+          {isGoogleModel && (
+            <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Gemini Settings</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600">Thinking Level</Label>
+                  <Select value={reasoningEffort} onValueChange={setReasoningEffort}>
+                    <SelectTrigger className="rounded-lg text-sm h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="minimal">Minimal</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-slate-400">Higher = better accuracy, more cost + latency</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600">Image Resolution</Label>
+                  <Select value={mediaResolution} onValueChange={setMediaResolution}>
+                    <SelectTrigger className="rounded-lg text-sm h-9">
+                      <SelectValue placeholder="Default" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default</SelectItem>
+                      <SelectItem value="low">Low (280 tokens)</SelectItem>
+                      <SelectItem value="medium">Medium (560 tokens)</SelectItem>
+                      <SelectItem value="high">High (1120 tokens)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-slate-400">Higher = better for fine text / small details</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="border-t border-slate-100 pt-5 space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium text-slate-700">Extraction Schema</Label>
@@ -1153,6 +1206,20 @@ export default function NewJobPage() {
               <ReviewItem label="Inference Model" value={selectedEvalModelObj?.name ?? ""} />
             )}
           </div>
+
+          {(reasoningEffort !== "low" || (mediaResolution && mediaResolution !== "default")) && (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-xs text-slate-400 mb-2">Model Config</p>
+              <div className="flex flex-wrap gap-2">
+                {reasoningEffort !== "low" && (
+                  <ReviewItem label="Thinking Level" value={reasoningEffort} />
+                )}
+                {mediaResolution && mediaResolution !== "default" && (
+                  <ReviewItem label="Image Resolution" value={mediaResolution} />
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="border-t border-slate-100 pt-4">
             <p className="text-xs text-slate-400 mb-2">Extraction Schema</p>

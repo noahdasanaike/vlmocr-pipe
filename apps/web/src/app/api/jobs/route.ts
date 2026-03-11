@@ -10,6 +10,7 @@ export async function GET() {
     for (const job of jobs) {
       // Parse JSON columns
       try { if (job.extraction_schema) job.extraction_schema = JSON.parse(job.extraction_schema as string); } catch { /* leave as string */ }
+      try { if (job.model_config) job.model_config = JSON.parse(job.model_config as string); } catch { /* leave as string */ }
 
       // Join labeling_model
       if (job.labeling_model_id) {
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest) {
     eval_model_api_id = null,
     eval_model_provider_slug = null,
     eval_model_provider_base_url = null,
+    model_config = {},
   } = body;
 
   const db = getDb();
@@ -60,8 +62,8 @@ export async function POST(req: NextRequest) {
       id, name, mode, labeling_model_id, finetune_model_id,
       label_ratio, extraction_schema, total_images, label_images, infer_images,
       eval_model_id, eval_model_api_id, eval_model_provider_slug, eval_model_provider_base_url,
-      status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', datetime('now'), datetime('now'))
+      model_config, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', datetime('now'), datetime('now'))
   `).run(
     jobId,
     name,
@@ -77,6 +79,7 @@ export async function POST(req: NextRequest) {
     eval_model_api_id || null,
     eval_model_provider_slug || null,
     eval_model_provider_base_url || null,
+    JSON.stringify(model_config || {}),
   );
 
   const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(jobId) as Record<string, unknown>;

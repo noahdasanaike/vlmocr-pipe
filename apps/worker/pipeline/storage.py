@@ -145,6 +145,18 @@ class StorageClient:
         finally:
             conn.close()
 
+    def get_eval_model(self, model_id: str) -> dict | None:
+        conn = self._get_conn()
+        try:
+            row = conn.execute("SELECT * FROM eval_models WHERE id = ?", (model_id,)).fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            d["config"] = json.loads(d.get("config") or "{}")
+            return d
+        finally:
+            conn.close()
+
     def get_setting(self, key: str) -> str | None:
         conn = self._get_conn()
         try:
@@ -243,19 +255,21 @@ class StorageClient:
         _retry_on_locked(_do)
 
     def claim_benchmark_run(self) -> dict | None:
-        conn = self._get_conn()
-        try:
-            row = conn.execute("SELECT id, name FROM benchmark_runs WHERE status = 'pending' ORDER BY created_at LIMIT 1").fetchone()
-            if not row:
-                return None
-            run = dict(row)
-            result = conn.execute("UPDATE benchmark_runs SET status = 'running', updated_at = datetime('now') WHERE id = ? AND status = 'pending'", (run["id"],))
-            conn.commit()
-            if result.rowcount == 0:
-                return None
-            return run
-        finally:
-            conn.close()
+        def _do():
+            conn = self._get_conn()
+            try:
+                row = conn.execute("SELECT id, name FROM benchmark_runs WHERE status = 'pending' ORDER BY created_at LIMIT 1").fetchone()
+                if not row:
+                    return None
+                run = dict(row)
+                result = conn.execute("UPDATE benchmark_runs SET status = 'running', updated_at = datetime('now') WHERE id = ? AND status = 'pending'", (run["id"],))
+                conn.commit()
+                if result.rowcount == 0:
+                    return None
+                return run
+            finally:
+                conn.close()
+        return _retry_on_locked(_do)
 
     def get_completed_benchmark_sample_ids(self, run_model_id: str) -> set[str]:
         """Return set of sample_ids that already have a benchmark_result for this run_model."""

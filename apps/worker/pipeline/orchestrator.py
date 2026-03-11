@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -50,6 +51,17 @@ class PipelineOrchestrator:
         provider_slug = job.get("eval_model_provider_slug", "")
         provider_base_url = job.get("eval_model_provider_base_url", "")
 
+        # Look up model config (reasoning_effort, media_resolution, etc.)
+        # Merge: model defaults < job-level overrides
+        model_config = {}
+        if job.get("eval_model_id"):
+            eval_model = self.storage.get_eval_model(job["eval_model_id"])
+            if eval_model:
+                model_config = eval_model.get("config", {})
+        job_config = json.loads(job.get("model_config") or "{}") if isinstance(job.get("model_config"), str) else job.get("model_config", {})
+        if job_config:
+            model_config = {**model_config, **job_config}
+
         # Build extraction prompt from schema
         fields_desc = "\n".join(
             f"- {k}: {v}" for k, v in schema.items()
@@ -82,6 +94,7 @@ class PipelineOrchestrator:
                     model_api_id=model_api_id,
                     provider_slug=provider_slug,
                     provider_base_url=provider_base_url,
+                    config=model_config,
                 )
 
                 # Parse JSON from response
@@ -89,7 +102,6 @@ class PipelineOrchestrator:
                     predicted_result = json.loads(predicted_text)
                 except json.JSONDecodeError:
                     # Try to extract JSON from markdown code block
-                    import re
                     match = re.search(r'\{[^{}]*\}', predicted_text, re.DOTALL)
                     if match:
                         try:
@@ -144,6 +156,10 @@ class PipelineOrchestrator:
         label_provider = labeling_model.get("provider") or {}
         label_provider_slug = label_provider.get("slug", "")
         label_provider_base_url = label_provider.get("base_url", "")
+        label_model_config = json.loads(labeling_model.get("config", "{}")) if isinstance(labeling_model.get("config"), str) else labeling_model.get("config", {})
+        job_config = json.loads(job.get("model_config") or "{}") if isinstance(job.get("model_config"), str) else job.get("model_config", {})
+        if job_config:
+            label_model_config = {**label_model_config, **job_config}
 
         # Count already-labeled images (from previous runs)
         labeled_count = sum(1 for img in label_images if img.get("gemini_label"))
@@ -163,7 +179,8 @@ class PipelineOrchestrator:
             try:
                 image_bytes = await self.storage.download_image(img["storage_path"])
                 label = await self.labeler.label_image(
-                    image_bytes, schema, label_model_api_id, label_provider_slug, label_provider_base_url
+                    image_bytes, schema, label_model_api_id, label_provider_slug, label_provider_base_url,
+                    config=label_model_config,
                 )
 
                 self.storage.update_image(
@@ -258,11 +275,10 @@ class PipelineOrchestrator:
         conn = self.storage._get_conn()
         try:
             conn.execute(
-                """INSERT INTO saved_models (id, user_id, job_id, finetune_model_id, name, storage_path, size_bytes, file_count)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO saved_models (id, job_id, finetune_model_id, name, storage_path, size_bytes, file_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     str(uuid.uuid4()),
-                    None,
                     job_id,
                     job["finetune_model_id"],
                     f"{job['name']} - Adapter",

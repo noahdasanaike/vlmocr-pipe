@@ -57,6 +57,7 @@ export async function GET(
 
     // Parse JSON columns
     try { if (job.extraction_schema) job.extraction_schema = JSON.parse(job.extraction_schema as string); } catch { /* leave as string */ }
+    try { if (job.model_config) job.model_config = JSON.parse(job.model_config as string); } catch { /* leave as string */ }
 
     // Join labeling_model
     if (job.labeling_model_id) {

@@ -597,6 +597,18 @@ export default function JobDetailPage({
             {JSON.stringify(job.extraction_schema, null, 2)}
           </pre>
         </div>
+        {job.model_config && Object.keys(job.model_config).length > 0 && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <p className="text-slate-400 text-xs mb-1.5">Model Config</p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(job.model_config).map(([k, v]) => (
+                <span key={k} className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-700">
+                  <span className="font-medium text-slate-500 mr-1">{k}:</span> {String(v)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Results */}

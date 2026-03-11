@@ -39,7 +39,8 @@ def _get_semaphore(provider_slug: str) -> asyncio.Semaphore:
 def _encode_image_bytes(image_bytes: bytes, filename: str = "") -> str:
     """Base64 encode image bytes and return data URI."""
     ext = os.path.splitext(filename)[1].lower() if filename else ""
-    mime = "image/png" if ext == ".png" else "image/jpeg"
+    mime_map = {".png": "image/png", ".tiff": "image/tiff", ".tif": "image/tiff", ".webp": "image/webp", ".bmp": "image/bmp"}
+    mime = mime_map.get(ext, "image/jpeg")
     b64 = base64.b64encode(image_bytes).decode("utf-8")
     return f"data:{mime};base64,{b64}"
 
@@ -250,7 +251,40 @@ async def call_model(
                 payload["max_tokens"] = 16384
 
     elif provider_slug == "google":
-        pass  # Gemini's OpenAI-compatible endpoint works with standard payloads
+        media_resolution = config.get("media_resolution")
+        json_schema = config.get("json_schema")
+
+        # If media_resolution is requested, use the native Gemini API instead
+        # of the OpenAI-compatible endpoint (media_resolution is not supported
+        # via OpenAI compat).
+        if media_resolution:
+            return await _call_google_native(
+                model_api_id=model_api_id,
+                image_bytes=image_bytes,
+                filename=filename,
+                prompt=prompt,
+                api_key=api_key,
+                media_resolution=media_resolution,
+                json_schema=json_schema,
+                reasoning_effort=reasoning_effort,
+                max_tokens=max_tokens,
+                retries=retries,
+            )
+
+        # Reasoning effort via OpenAI-compat endpoint
+        # Accepted values: "minimal", "low", "medium", "high"
+        if reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
+
+        # Structured output via OpenAI-compat response_format
+        if json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "extraction",
+                    "schema": json_schema,
+                },
+            }
 
     elif provider_slug == "qubrid":
         pass  # Standard OpenAI-compatible endpoint
@@ -382,3 +416,240 @@ async def _call_replicate(
             raise
     # Should not reach here
     raise RuntimeError("Replicate retries exhausted")
+
+
+# ── Google native Gemini API (for media_resolution + structured output) ──
+
+GOOGLE_NATIVE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+# Valid media resolution levels for the Gemini API
+MEDIA_RESOLUTIONS = {
+    "low": "MEDIA_RESOLUTION_LOW",
+    "medium": "MEDIA_RESOLUTION_MEDIUM",
+    "high": "MEDIA_RESOLUTION_HIGH",
+    "ultra_high": "MEDIA_RESOLUTION_ULTRA_HIGH",
+}
+
+
+def _get_mime_type(filename: str) -> str:
+    ext = os.path.splitext(filename)[1].lower() if filename else ""
+    mime_map = {".png": "image/png", ".tiff": "image/tiff", ".tif": "image/tiff", ".webp": "image/webp", ".bmp": "image/bmp"}
+    return mime_map.get(ext, "image/jpeg")
+
+
+async def _call_google_native(
+    model_api_id: str,
+    image_bytes: bytes,
+    filename: str,
+    prompt: str,
+    api_key: str,
+    media_resolution: str = "high",
+    json_schema: dict | None = None,
+    reasoning_effort: str = "low",
+    max_tokens: int = 512,
+    retries: int = 5,
+) -> tuple[str, float]:
+    """Call the native Gemini generateContent API.
+
+    Used instead of the OpenAI-compat endpoint when features like
+    media_resolution or native structured output are needed.
+    """
+    b64 = base64.b64encode(image_bytes).decode("utf-8")
+    mime = _get_mime_type(filename)
+
+    # Resolve resolution string
+    resolution = MEDIA_RESOLUTIONS.get(media_resolution, media_resolution)
+    if resolution not in MEDIA_RESOLUTIONS.values():
+        resolution = "MEDIA_RESOLUTION_HIGH"
+
+    # Build parts
+    parts = [
+        {"inline_data": {"mime_type": mime, "data": b64}},
+        {"text": prompt},
+    ]
+
+    payload: dict = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "mediaResolution": resolution,
+        },
+    }
+
+    # Thinking config — Gemini 3.x uses thinkingLevel, 2.5 uses thinkingBudget
+    is_gemini3 = "gemini-3" in model_api_id
+    if reasoning_effort:
+        thinking_config: dict = {}
+        if is_gemini3:
+            # thinkingLevel: "minimal", "low", "medium", "high"
+            level_map = {"minimal": "minimal", "low": "low", "medium": "medium", "high": "high"}
+            thinking_config["thinkingLevel"] = level_map.get(reasoning_effort, "low")
+        else:
+            # thinkingBudget for Gemini 2.5: -1=dynamic, or token count
+            budget_map = {"minimal": 1024, "low": 1024, "medium": 8192, "high": 24576}
+            thinking_config["thinkingBudget"] = budget_map.get(reasoning_effort, 1024)
+        payload["generationConfig"]["thinkingConfig"] = thinking_config
+
+    # Structured output via native API
+    if json_schema:
+        payload["generationConfig"]["responseMimeType"] = "application/json"
+        payload["generationConfig"]["responseJsonSchema"] = json_schema
+
+    url = GOOGLE_NATIVE_URL.format(model=model_api_id)
+
+    sem = _get_semaphore("google")
+    async with sem:
+        t0 = time.time()
+        for attempt in range(retries):
+            try:
+                async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as http:
+                    resp = await http.post(
+                        url,
+                        params={"key": api_key},
+                        headers={"Content-Type": "application/json"},
+                        json=payload,
+                    )
+
+                if resp.status_code in (429, 500, 502, 503) and attempt < retries - 1:
+                    wait = min(10 * (2 ** attempt), 120)
+                    logger.warning(f"[{resp.status_code}] retry in {wait}s for {model_api_id} (native)")
+                    await asyncio.sleep(wait)
+                    continue
+
+                resp.raise_for_status()
+                break
+
+            except httpx.ReadTimeout:
+                if attempt < retries - 1:
+                    wait = min(10 * (2 ** attempt), 120)
+                    logger.warning(f"Timeout, retry in {wait}s for {model_api_id} (native)")
+                    await asyncio.sleep(wait)
+                    continue
+                raise
+
+        elapsed = time.time() - t0
+        data = resp.json()
+
+        if "error" in data:
+            raise RuntimeError(data["error"].get("message", str(data["error"])))
+
+        # Extract text from native response format
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise RuntimeError(f"No candidates in Gemini response: {json.dumps(data)[:300]}")
+
+        parts = candidates[0].get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in parts).strip()
+
+        finish_reason = candidates[0].get("finishReason", "")
+        if finish_reason == "MAX_TOKENS":
+            logger.warning(
+                f"Model {model_api_id} output truncated (native, finishReason=MAX_TOKENS). "
+                f"Last 100 chars: ...{text[-100:]}"
+            )
+
+        return text, elapsed
+
+
+# ── Google Gemini batch API (50% cost savings) ────────────────────────
+
+GOOGLE_BATCH_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:batchGenerateContent"
+
+
+async def call_model_batch_google(
+    requests: list[dict],
+    model_api_id: str,
+    api_key: str | None = None,
+    media_resolution: str | None = None,
+    json_schema: dict | None = None,
+    reasoning_effort: str | None = None,
+    max_tokens: int = 512,
+) -> list[tuple[str, float]]:
+    """Submit a batch of requests to the Gemini batchGenerateContent API.
+
+    Each item in `requests` should have:
+        - image_bytes: bytes
+        - filename: str
+        - prompt: str
+
+    Returns list of (predicted_text, latency_seconds) in the same order.
+    Batch API is priced at 50% of interactive cost.
+    """
+    if api_key is None:
+        api_key = _get_api_key("google")
+
+    resolution = None
+    if media_resolution:
+        resolution = MEDIA_RESOLUTIONS.get(media_resolution, media_resolution)
+        if resolution not in MEDIA_RESOLUTIONS.values():
+            resolution = "MEDIA_RESOLUTION_HIGH"
+
+    # Build thinking config
+    thinking_config = None
+    if reasoning_effort:
+        is_gemini3 = "gemini-3" in model_api_id
+        thinking_config = {}
+        if is_gemini3:
+            level_map = {"minimal": "minimal", "low": "low", "medium": "medium", "high": "high"}
+            thinking_config["thinkingLevel"] = level_map.get(reasoning_effort, "low")
+        else:
+            budget_map = {"minimal": 1024, "low": 1024, "medium": 8192, "high": 24576}
+            thinking_config["thinkingBudget"] = budget_map.get(reasoning_effort, 1024)
+
+    # Build inline requests
+    inline_requests = []
+    for req in requests:
+        b64 = base64.b64encode(req["image_bytes"]).decode("utf-8")
+        mime = _get_mime_type(req.get("filename", ""))
+        parts = [
+            {"inline_data": {"mime_type": mime, "data": b64}},
+            {"text": req["prompt"]},
+        ]
+        gen_config: dict = {"maxOutputTokens": max_tokens}
+        if resolution:
+            gen_config["mediaResolution"] = resolution
+        if json_schema:
+            gen_config["responseMimeType"] = "application/json"
+            gen_config["responseJsonSchema"] = json_schema
+        if thinking_config:
+            gen_config["thinkingConfig"] = thinking_config
+
+        inline_requests.append({
+            "contents": [{"parts": parts}],
+            "generationConfig": gen_config,
+        })
+
+    url = GOOGLE_BATCH_URL.format(model=model_api_id)
+    payload = {"requests": inline_requests}
+
+    t0 = time.time()
+    async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as http:
+        resp = await http.post(
+            url,
+            params={"key": api_key},
+            headers={"Content-Type": "application/json"},
+            json=payload,
+        )
+    resp.raise_for_status()
+    elapsed = time.time() - t0
+    per_request_time = elapsed / len(requests) if requests else 0
+
+    data = resp.json()
+    if "error" in data:
+        raise RuntimeError(data["error"].get("message", str(data["error"])))
+
+    results = []
+    responses = data.get("responses", [])
+    for r in responses:
+        if "error" in r:
+            results.append(("", per_request_time))
+            continue
+        candidates = r.get("candidates", [])
+        if not candidates:
+            results.append(("", per_request_time))
+            continue
+        parts = candidates[0].get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in parts).strip()
+        results.append((text, per_request_time))
+
+    return results

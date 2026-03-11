@@ -19,6 +19,7 @@ class Labeler:
         model_api_id: str,
         provider_slug: str,
         provider_base_url: str,
+        config: dict | None = None,
     ) -> dict:
         """Label a single image using any eval model."""
         schema_description = "\n".join(
@@ -41,6 +42,7 @@ Return valid JSON only, no markdown formatting."""
             model_api_id=model_api_id,
             provider_slug=provider_slug,
             provider_base_url=provider_base_url,
+            config=config,
             max_tokens=2048,
         )
 

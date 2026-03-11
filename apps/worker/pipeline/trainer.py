@@ -168,8 +168,10 @@ class LocalTrainer:
 
             # Free GPU memory
             del model
-            if 'trainer' in dir():
+            try:
                 del trainer
+            except NameError:
+                pass
             torch.cuda.empty_cache()
 
         except ImportError as e:

@@ -47,6 +47,13 @@ export function getDb(): Database.Database {
     throw new Error("Could not find schema.sql — check src/lib/db/");
   }
 
+  // Migrations for existing DBs
+  try {
+    _db.exec("ALTER TABLE jobs ADD COLUMN model_config TEXT NOT NULL DEFAULT '{}'");
+  } catch {
+    // Column already exists
+  }
+
   return _db;
 }
 
