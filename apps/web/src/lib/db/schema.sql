@@ -107,6 +107,9 @@ CREATE TABLE IF NOT EXISTS eval_models (
   name TEXT NOT NULL,
   api_model_id TEXT NOT NULL,
   cost_per_image_credits REAL NOT NULL DEFAULT 1,
+  input_cost_per_1m REAL NOT NULL DEFAULT 0,
+  output_cost_per_1m REAL NOT NULL DEFAULT 0,
+  tokens_per_image INTEGER NOT NULL DEFAULT 1000,
   config TEXT NOT NULL DEFAULT '{}',
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))

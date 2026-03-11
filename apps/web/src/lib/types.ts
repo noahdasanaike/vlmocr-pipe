@@ -113,6 +113,9 @@ export interface EvalModel {
   name: string;
   api_model_id: string;
   cost_per_image_credits: number;
+  input_cost_per_1m: number;
+  output_cost_per_1m: number;
+  tokens_per_image: number;
   config: Record<string, unknown>;
   is_active: boolean;
   // Joined

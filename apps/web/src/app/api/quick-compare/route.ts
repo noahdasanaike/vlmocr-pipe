@@ -271,10 +271,27 @@ export async function POST(req: NextRequest) {
             }
           }),
         );
+
+        // Compute cost per 1,000 images from actual token usage
+        const inputCostPer1m = (model.input_cost_per_1m as number) || 0;
+        const outputCostPer1m = (model.output_cost_per_1m as number) || 0;
+        const imgCount = imageFiles.length || 1;
+        const avgInputPerImg = totalInputTokens / imgCount;
+        const avgOutputPerImg = totalOutputTokens / imgCount;
+        let costPer1k = ((avgInputPerImg * inputCostPer1m + avgOutputPerImg * outputCostPer1m) / 1_000_000) * 1000;
+        // Gemini batch API halves cost
+        const isGoogleBatch = (provider.slug as string) === "google";
+        const costPer1kBatch = isGoogleBatch ? costPer1k * 0.5 : costPer1k;
+
         return {
           modelId: model.id,
           modelName: model.name,
+          providerSlug: provider.slug,
           costPerImage: model.cost_per_image_credits as number,
+          inputCostPer1m: inputCostPer1m,
+          outputCostPer1m: outputCostPer1m,
+          costPer1k: Math.round(costPer1k * 10000) / 10000,
+          costPer1kBatch: Math.round(costPer1kBatch * 10000) / 10000,
           outputs,
           totalInputTokens,
           totalOutputTokens,

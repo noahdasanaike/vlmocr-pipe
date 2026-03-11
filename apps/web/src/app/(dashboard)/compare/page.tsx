@@ -18,6 +18,11 @@ import type { EvalProvider, EvalModel } from "@/lib/types";
 type CompareResult = {
   modelId: string;
   modelName: string;
+  providerSlug?: string;
+  costPer1k?: number;
+  costPer1kBatch?: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
   outputs: { filename: string; text: string }[];
 };
 
@@ -231,7 +236,15 @@ export default function ComparePage() {
                           key={r.modelId}
                           className="text-left px-4 py-2.5 font-medium text-slate-600 border-b min-w-[200px]"
                         >
-                          {r.modelName}
+                          <div>{r.modelName}</div>
+                          {r.costPer1k != null && r.costPer1k > 0 && (
+                            <div className="font-normal text-[10px] text-slate-400 mt-0.5">
+                              ${r.costPer1k.toFixed(4)}/1k images
+                              {r.providerSlug === "google" && r.costPer1kBatch != null && (
+                                <span className="text-emerald-500 ml-1">(batch: ${r.costPer1kBatch.toFixed(4)})</span>
+                              )}
+                            </div>
+                          )}
                         </th>
                       ))}
                     </tr>

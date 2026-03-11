@@ -68,6 +68,40 @@ export function getDb(): Database.Database {
     _db.exec("ALTER TABLE jobs ADD COLUMN total_cost REAL NOT NULL DEFAULT 0");
   } catch { /* exists */ }
 
+  // Add pricing columns to eval_models
+  try {
+    _db.exec("ALTER TABLE eval_models ADD COLUMN input_cost_per_1m REAL NOT NULL DEFAULT 0");
+  } catch { /* exists */ }
+  try {
+    _db.exec("ALTER TABLE eval_models ADD COLUMN output_cost_per_1m REAL NOT NULL DEFAULT 0");
+  } catch { /* exists */ }
+  try {
+    _db.exec("ALTER TABLE eval_models ADD COLUMN tokens_per_image INTEGER NOT NULL DEFAULT 1000");
+  } catch { /* exists */ }
+
+  // Backfill pricing for existing models (idempotent — only updates models still at defaults)
+  const pricingUpdates: [string, number, number, number][] = [
+    ["m1",  2.50, 10.00, 765],  ["m2",  1.25, 10.00, 1300], ["m3",  0.15, 3.50, 1300],
+    ["m4",  3.00, 15.00, 1050], ["m5",  1.20, 1.20, 1500],  ["m6",  2.00, 8.00, 1500],
+    ["m7",  0.20, 0.60, 1200],  ["m8",  0.60, 0.60, 1200],  ["m18", 0.075, 0.30, 1300],
+    ["m20", 0.40, 0.40, 1200],  ["m23", 0.075, 0.30, 1300], ["m24", 0.15, 0.15, 1200],
+    ["m25", 1.50, 1.50, 1500],  ["m9",  0.06, 0.06, 1200],  ["m10", 0.10, 0.10, 1200],
+    ["m11", 0.03, 0.03, 1200],  ["m21", 0.13, 0.13, 1500],  ["m13", 0.10, 0.10, 1200],
+    ["m14", 0.20, 0.20, 1200],  ["m22", 0.10, 0.10, 1500],  ["m15", 0.20, 0.60, 1500],
+    ["m16", 0.20, 0.60, 1500],  ["m26", 0.20, 0.60, 1500],  ["m27", 0.20, 0.60, 1500],
+    ["m28", 0.80, 2.40, 1500],  ["m17", 0.05, 0.05, 1200],  ["m12", 0.07, 0.07, 1200],
+    ["m30", 0.15, 3.50, 1300],  ["m31", 1.25, 10.00, 1300], ["m32", 3.00, 12.00, 765],
+    ["m33", 3.00, 12.00, 765],  ["m34", 15.00, 75.00, 1050],["m35", 0.10, 0.10, 1200],
+    ["m36", 0.07, 0.07, 1200],  ["m37", 0.27, 0.27, 1200],  ["m38", 0.15, 0.15, 1200],
+    ["m39", 0.50, 0.50, 1200],  ["m40", 0.50, 0.50, 1200],  ["m41", 0.15, 0.15, 1200],
+  ];
+  const pricingStmt = _db.prepare(
+    "UPDATE eval_models SET input_cost_per_1m = ?, output_cost_per_1m = ?, tokens_per_image = ? WHERE id = ? AND input_cost_per_1m = 0 AND output_cost_per_1m = 0"
+  );
+  for (const [id, inp, out, tpi] of pricingUpdates) {
+    pricingStmt.run(inp, out, tpi, id);
+  }
+
   return _db;
 }
 

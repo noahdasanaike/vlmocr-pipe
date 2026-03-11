@@ -99,7 +99,7 @@ export default function NewJobPage() {
   // Quick Compare state
   const [qcModels, setQcModels] = useState<Set<string>>(new Set());
   const [qcRunning, setQcRunning] = useState(false);
-  const [qcResults, setQcResults] = useState<{ modelId: string; modelName: string; costPerImage?: number; totalInputTokens?: number; totalOutputTokens?: number; outputs: { filename: string; text: string; input_tokens?: number; output_tokens?: number }[] }[] | null>(null);
+  const [qcResults, setQcResults] = useState<{ modelId: string; modelName: string; providerSlug?: string; costPerImage?: number; costPer1k?: number; costPer1kBatch?: number; totalInputTokens?: number; totalOutputTokens?: number; outputs: { filename: string; text: string; input_tokens?: number; output_tokens?: number }[] }[] | null>(null);
 
   // Cost estimation state
   const [costEstimate, setCostEstimate] = useState<{
@@ -1121,7 +1121,15 @@ export default function NewJobPage() {
                           <th className="text-left px-3 py-2 font-medium text-slate-600 border-b">File</th>
                           {qcResults.map((r) => (
                             <th key={r.modelId} className="text-left px-3 py-2 font-medium text-slate-600 border-b">
-                              {r.modelName}
+                              <div>{r.modelName}</div>
+                              {r.costPer1k != null && r.costPer1k > 0 && (
+                                <div className="font-normal text-[10px] text-slate-400 mt-0.5">
+                                  ${r.costPer1k.toFixed(4)}/1k images
+                                  {r.providerSlug === "google" && r.costPer1kBatch != null && (
+                                    <span className="text-emerald-500 ml-1">(batch: ${r.costPer1kBatch.toFixed(4)})</span>
+                                  )}
+                                </div>
+                              )}
                             </th>
                           ))}
                         </tr>
@@ -1281,14 +1289,27 @@ export default function NewJobPage() {
               <p className="text-xs font-medium text-slate-700">Cost Estimate</p>
             </div>
 
-            {/* Static estimate from cost_per_image_credits */}
+            {/* Static estimate from cost_per_image_credits + real $ pricing */}
             {(() => {
               const activeModel = jobMode === "inference_only"
                 ? selectedEvalModelObj
                 : labelingModels.find((m) => m.id === selectedLabelModel);
-              const costPerImg = (activeModel as EvalModel & { cost_per_image_credits?: number })?.cost_per_image_credits ?? 0;
+              const em = activeModel as EvalModel | undefined;
+              const costPerImg = em?.cost_per_image_credits ?? 0;
+              const inputCostPer1m = em?.input_cost_per_1m ?? 0;
+              const outputCostPer1m = em?.output_cost_per_1m ?? 0;
+              const tokensPerImage = em?.tokens_per_image ?? 1000;
               const totalImages = images.length;
               const staticCost = costPerImg * totalImages;
+
+              // Static $ estimate: image tokens as input + estimated ~200 output tokens per image
+              const estOutputTokens = 200;
+              const staticDollarPerImage = (tokensPerImage * inputCostPer1m + estOutputTokens * outputCostPer1m) / 1_000_000;
+              const staticDollarTotal = staticDollarPerImage * totalImages;
+
+              // Check if active provider is Google (for batch discount)
+              const activeProvider = evalProviders.flatMap(p => p.models.map(m => ({ model: m, slug: p.slug }))).find(x => x.model.id === em?.id);
+              const isGoogle = activeProvider?.slug === "google";
 
               return (
                 <div className="rounded-lg bg-amber-50/50 border border-amber-100 p-3 space-y-2">
@@ -1296,6 +1317,15 @@ export default function NewJobPage() {
                     <span className="text-slate-500">{totalImages} images × {costPerImg} credits/image</span>
                     <span className="font-semibold text-slate-900">{staticCost.toFixed(1)} credits</span>
                   </div>
+                  {inputCostPer1m > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Estimated cost ({totalImages.toLocaleString()} images)</span>
+                      <span className="font-semibold text-slate-900">
+                        ~${staticDollarTotal.toFixed(4)}
+                        {isGoogle && <span className="text-emerald-600 ml-1">(batch: ~${(staticDollarTotal * 0.5).toFixed(4)})</span>}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Preview batch results */}
                   {costEstimate && (
@@ -1308,6 +1338,19 @@ export default function NewJobPage() {
                         <span className="text-slate-500">Estimated total output tokens</span>
                         <span className="font-medium text-slate-700">{costEstimate.totalEstimatedTokens.toLocaleString()}</span>
                       </div>
+                      {inputCostPer1m > 0 && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500">Refined cost estimate</span>
+                          <span className="font-semibold text-emerald-700">
+                            ~${((tokensPerImage * inputCostPer1m + costEstimate.avgOutputTokens * outputCostPer1m) / 1_000_000 * totalImages).toFixed(4)}
+                            {isGoogle && (
+                              <span className="text-emerald-500 ml-1">
+                                (batch: ~${((tokensPerImage * inputCostPer1m + costEstimate.avgOutputTokens * outputCostPer1m) / 1_000_000 * totalImages * 0.5).toFixed(4)})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
 
