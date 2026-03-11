@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArtFooter } from "@/components/art-footer";
-import { Plus, FileImage, Clock, CheckCircle2, Coins } from "lucide-react";
+import { Plus, FileImage, Clock, CheckCircle2, DollarSign } from "lucide-react";
 import type { Job, JobStatus } from "@/lib/types";
 
 const statusConfig: Record<JobStatus, { color: string; bg: string }> = {
@@ -19,6 +19,12 @@ const statusConfig: Record<JobStatus, { color: string; bg: string }> = {
   cancelled: { color: "text-slate-500", bg: "bg-slate-100" },
   paused: { color: "text-orange-700", bg: "bg-orange-50" },
 };
+
+function formatCost(cost: number): string {
+  if (cost === 0) return "$0.00";
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
 
 export default function DashboardPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -46,7 +52,7 @@ export default function DashboardPage() {
     ["labeling", "training", "inferring"].includes(j.status)
   );
   const completedJobs = jobs.filter((j) => j.status === "complete");
-  const totalCost = jobs.reduce((s, j) => s + (j.total_cost ?? 0), 0);
+  const totalSpend = jobs.reduce((s, j) => s + (j.total_cost ?? 0), 0);
 
   if (loading) {
     return (
@@ -75,7 +81,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick stats */}
-      <div className={`grid grid-cols-2 ${totalCost > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-4`}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard
           label="Total Jobs"
           value={String(jobs.length)}
@@ -91,20 +97,18 @@ export default function DashboardPage() {
           value={String(completedJobs.length)}
           icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
         />
-        {totalCost > 0 && (
-          <StatCard
-            label="Total Cost"
-            value={`${totalCost.toFixed(1)} cr`}
-            icon={<Coins className="h-4 w-4 text-amber-500" />}
-          />
-        )}
+        <StatCard
+          label="Total Spend"
+          value={formatCost(totalSpend)}
+          icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
+        />
       </div>
 
       {/* Jobs list */}
       {jobs.length > 0 ? (
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wider">
-            Recent Jobs
+            Job History
           </h2>
           <div className="space-y-2">
             {jobs.map((job) => {
@@ -124,6 +128,7 @@ export default function DashboardPage() {
                         ? 50
                         : 0;
               const cfg = statusConfig[job.status];
+              const jobCost = job.total_cost ?? 0;
 
               return (
                 <Link
@@ -172,6 +177,13 @@ export default function DashboardPage() {
                       {job.finetune_model ? ` \u00b7 ${job.finetune_model.name}` : ""}
                     </p>
                   </div>
+
+                  {/* Cost */}
+                  {jobCost > 0 && (
+                    <span className="text-xs font-medium text-slate-600 shrink-0 hidden sm:block">
+                      {formatCost(jobCost)}
+                    </span>
+                  )}
 
                   {/* Status badge */}
                   <Badge

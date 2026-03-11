@@ -90,12 +90,14 @@ class PipelineOrchestrator:
             f"No explanation, just the JSON."
         )
 
-        # Look up cost per image for the model
-        cost_per_image = 0.0
+        # Look up model pricing for USD cost calculation
+        input_cost_per_1m = 0.0
+        output_cost_per_1m = 0.0
         if job.get("eval_model_id"):
             eval_model = self.storage.get_eval_model(job["eval_model_id"])
             if eval_model:
-                cost_per_image = eval_model.get("cost_per_image_credits", 0)
+                input_cost_per_1m = eval_model.get("input_cost_per_1m", 0) or 0
+                output_cost_per_1m = eval_model.get("output_cost_per_1m", 0) or 0
 
         # Skip already-inferred images (resumption support)
         pending_images = [img for img in all_images if img.get("infer_status") not in ("complete", "failed")]
@@ -103,7 +105,7 @@ class PipelineOrchestrator:
         failed_count = sum(1 for img in all_images if img.get("infer_status") == "failed")
         total_input_tokens = 0
         total_output_tokens = 0
-        total_cost = inferred_count * cost_per_image
+        total_cost = 0.0
         if inferred_count > 0 or failed_count > 0:
             logger.info(f"Resuming: {inferred_count} complete, {failed_count} failed, {len(pending_images)} pending")
 
@@ -149,7 +151,7 @@ class PipelineOrchestrator:
                     infer_status="complete",
                 )
                 inferred_count += 1
-                total_cost += cost_per_image
+                total_cost = (total_input_tokens * input_cost_per_1m + total_output_tokens * output_cost_per_1m) / 1_000_000
                 await self.update_job_status(
                     job_id, "inferring",
                     inferred_count=inferred_count, failed_count=failed_count,

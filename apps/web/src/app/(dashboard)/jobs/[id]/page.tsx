@@ -485,7 +485,7 @@ export default function JobDetailPage({
           <MiniStat
             icon={<Tag className="h-4 w-4 text-amber-500" />}
             label="Cost"
-            value={`${job.total_cost.toFixed(1)} cr`}
+            value={job.total_cost < 0.01 && job.total_cost > 0 ? `$${job.total_cost.toFixed(4)}` : `$${job.total_cost.toFixed(2)}`}
           />
           <MiniStat
             icon={<Cpu className="h-4 w-4 text-slate-400" />}
