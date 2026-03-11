@@ -5,17 +5,28 @@ import { join, dirname, resolve } from "path";
 
 // Resolve project root — this file lives at src/lib/db/index.ts
 function findProjectRoot(): string {
-  // Most reliable: __dirname is src/lib/db, so go up 3 levels to apps/web
-  const fromFile = resolve(__dirname, "..", "..", "..");
-  if (existsSync(join(fromFile, "src", "lib", "db", "schema.sql"))) return fromFile;
+  const candidates: string[] = [];
 
-  // Fallback: walk up from cwd
+  // __dirname-based (works in Node, may be rewritten by bundler)
+  candidates.push(resolve(__dirname, "..", "..", ".."));
+
+  // cwd-based + walk up
   let dir = process.cwd();
-  for (let i = 0; i < 5; i++) {
-    if (existsSync(join(dir, "src", "lib", "db", "schema.sql"))) return dir;
-    if (existsSync(join(dir, "apps", "web", "src", "lib", "db", "schema.sql"))) return join(dir, "apps", "web");
+  for (let i = 0; i < 6; i++) {
+    candidates.push(dir);
+    candidates.push(join(dir, "apps", "web"));
     dir = dirname(dir);
   }
+
+  for (const candidate of candidates) {
+    if (existsSync(join(candidate, "src", "lib", "db", "schema.sql"))) {
+      return candidate;
+    }
+  }
+
+  // Last resort: log what we tried
+  console.error("[db] Could not find schema.sql. Tried:", candidates.slice(0, 6));
+  console.error("[db] __dirname =", __dirname, "| cwd =", process.cwd());
   return process.cwd();
 }
 
@@ -36,10 +47,23 @@ export function getDb(): Database.Database {
   _db.pragma("foreign_keys = ON");
 
   // Run schema — try multiple paths for compatibility
-  const possibleDirs = [
+  // Bundlers (Turbopack/Webpack) rewrite __dirname/__filename, so we try many candidates
+  const possibleDirs: string[] = [
     join(PROJECT_ROOT, "src", "lib", "db"),
     dirname(__filename),
   ];
+  // Also try common absolute paths based on cwd
+  const cwd = process.cwd();
+  possibleDirs.push(join(cwd, "src", "lib", "db"));
+  possibleDirs.push(join(cwd, "apps", "web", "src", "lib", "db"));
+  // Walk up from cwd
+  let walkDir = dirname(cwd);
+  for (let i = 0; i < 4; i++) {
+    possibleDirs.push(join(walkDir, "src", "lib", "db"));
+    possibleDirs.push(join(walkDir, "apps", "web", "src", "lib", "db"));
+    walkDir = dirname(walkDir);
+  }
+
   let schemaLoaded = false;
   for (const dir of possibleDirs) {
     try {
@@ -54,6 +78,7 @@ export function getDb(): Database.Database {
     }
   }
   if (!schemaLoaded) {
+    console.error("[db] Could not find schema.sql. PROJECT_ROOT =", PROJECT_ROOT, "| cwd =", cwd, "| __filename =", __filename);
     throw new Error("Could not find schema.sql — check src/lib/db/");
   }
 
