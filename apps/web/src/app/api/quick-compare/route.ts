@@ -125,13 +125,19 @@ function extractJSON(text: string): string {
   return text.slice(0, 300);
 }
 
+type ModelCallResult = {
+  text: string;
+  input_tokens: number;
+  output_tokens: number;
+};
+
 async function callEvalModel(
   dataUri: string,
   prompt: string,
   modelApiId: string,
   providerSlug: string,
   providerBaseUrl: string,
-): Promise<string> {
+): Promise<ModelCallResult> {
   const apiKey = getProviderApiKey(providerSlug);
   if (!apiKey) throw new Error(`No API key for provider: ${providerSlug}`);
 
@@ -153,7 +159,13 @@ async function callEvalModel(
 
   const data = await res.json();
   const raw = data.choices?.[0]?.message?.content ?? "";
-  return extractJSON(raw);
+
+  // Extract token usage (OpenAI-compatible format used by most providers)
+  const usage = data.usage ?? {};
+  const input_tokens = usage.prompt_tokens ?? 0;
+  const output_tokens = usage.completion_tokens ?? 0;
+
+  return { text: extractJSON(raw), input_tokens, output_tokens };
 }
 
 export async function POST(req: NextRequest) {
@@ -239,26 +251,33 @@ export async function POST(req: NextRequest) {
     // Run all model x image combinations
     const results = await Promise.all(
       withKeys.map(async ({ model, provider }) => {
+        let totalInputTokens = 0;
+        let totalOutputTokens = 0;
         const outputs = await Promise.all(
           imageFiles.map(async (img) => {
             try {
-              const text = await callEvalModel(
+              const result = await callEvalModel(
                 img.dataUri,
                 prompt,
                 model.api_model_id as string,
                 provider.slug as string,
                 provider.base_url as string,
               );
-              return { filename: img.filename, text };
+              totalInputTokens += result.input_tokens;
+              totalOutputTokens += result.output_tokens;
+              return { filename: img.filename, text: result.text, input_tokens: result.input_tokens, output_tokens: result.output_tokens };
             } catch (err) {
-              return { filename: img.filename, text: `Error: ${err instanceof Error ? err.message : String(err)}` };
+              return { filename: img.filename, text: `Error: ${err instanceof Error ? err.message : String(err)}`, input_tokens: 0, output_tokens: 0 };
             }
           }),
         );
         return {
           modelId: model.id,
           modelName: model.name,
+          costPerImage: model.cost_per_image_credits as number,
           outputs,
+          totalInputTokens,
+          totalOutputTokens,
         };
       }),
     );

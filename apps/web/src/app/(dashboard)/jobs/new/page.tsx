@@ -30,6 +30,8 @@ import {
   Cloud,
   Globe,
   BarChart3,
+  Coins,
+  Zap,
 } from "lucide-react";
 import { ArtFooter } from "@/components/art-footer";
 import type { FinetuneModel, EvalModel, EvalProvider, ExtractionSchema, JobMode } from "@/lib/types";
@@ -97,7 +99,16 @@ export default function NewJobPage() {
   // Quick Compare state
   const [qcModels, setQcModels] = useState<Set<string>>(new Set());
   const [qcRunning, setQcRunning] = useState(false);
-  const [qcResults, setQcResults] = useState<{ modelId: string; modelName: string; outputs: { filename: string; text: string }[] }[] | null>(null);
+  const [qcResults, setQcResults] = useState<{ modelId: string; modelName: string; costPerImage?: number; totalInputTokens?: number; totalOutputTokens?: number; outputs: { filename: string; text: string; input_tokens?: number; output_tokens?: number }[] }[] | null>(null);
+
+  // Cost estimation state
+  const [costEstimate, setCostEstimate] = useState<{
+    avgOutputTokens: number;
+    totalEstimatedTokens: number;
+    estimatedCost: number;
+    samplesUsed: number;
+  } | null>(null);
+  const [estimating, setEstimating] = useState(false);
   const [labelingModels, setLabelingModels] = useState<(EvalModel & { provider_name?: string; provider_slug?: string })[]>([]);
   const [finetuneModels, setFinetuneModels] = useState<FinetuneModel[]>([]);
   const [selectedLabelModel, setSelectedLabelModel] = useState("");
@@ -1261,6 +1272,106 @@ export default function NewJobPage() {
             <pre className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700 overflow-auto">
               {JSON.stringify(schema, null, 2)}
             </pre>
+          </div>
+
+          {/* Cost estimation */}
+          <div className="border-t border-slate-100 pt-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Coins className="h-4 w-4 text-amber-500" />
+              <p className="text-xs font-medium text-slate-700">Cost Estimate</p>
+            </div>
+
+            {/* Static estimate from cost_per_image_credits */}
+            {(() => {
+              const activeModel = jobMode === "inference_only"
+                ? selectedEvalModelObj
+                : labelingModels.find((m) => m.id === selectedLabelModel);
+              const costPerImg = (activeModel as EvalModel & { cost_per_image_credits?: number })?.cost_per_image_credits ?? 0;
+              const totalImages = images.length;
+              const staticCost = costPerImg * totalImages;
+
+              return (
+                <div className="rounded-lg bg-amber-50/50 border border-amber-100 p-3 space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500">{totalImages} images × {costPerImg} credits/image</span>
+                    <span className="font-semibold text-slate-900">{staticCost.toFixed(1)} credits</span>
+                  </div>
+
+                  {/* Preview batch results */}
+                  {costEstimate && (
+                    <div className="border-t border-amber-100 pt-2 space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">Avg output tokens (from {costEstimate.samplesUsed} samples)</span>
+                        <span className="font-medium text-slate-700">{costEstimate.avgOutputTokens.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">Estimated total output tokens</span>
+                        <span className="font-medium text-slate-700">{costEstimate.totalEstimatedTokens.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Run preview button */}
+                  {hasLocalFiles && !costEstimate && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-lg text-xs h-7 w-full"
+                      disabled={estimating}
+                      onClick={async () => {
+                        setEstimating(true);
+                        try {
+                          const sampleFiles = images.filter((img) => img.file).slice(0, 3);
+                          if (sampleFiles.length === 0) return;
+
+                          const activeModelId = jobMode === "inference_only"
+                            ? selectedEvalModel
+                            : selectedLabelModel;
+                          if (!activeModelId) return;
+
+                          const fd = new FormData();
+                          fd.append("model_ids", JSON.stringify([activeModelId]));
+                          fd.append("extraction_schema", JSON.stringify(schema));
+                          for (const img of sampleFiles) {
+                            fd.append("images", img.file!);
+                          }
+                          const res = await fetch("/api/quick-compare", { method: "POST", body: fd });
+                          if (!res.ok) throw new Error("Preview failed");
+                          const data = await res.json();
+                          const result = data.results?.[0];
+                          if (result) {
+                            const totalOut = result.totalOutputTokens ?? result.outputs.reduce((s: number, o: { output_tokens?: number }) => s + (o.output_tokens ?? 0), 0);
+                            const avgOut = Math.round(totalOut / sampleFiles.length);
+                            setCostEstimate({
+                              avgOutputTokens: avgOut,
+                              totalEstimatedTokens: avgOut * images.length,
+                              estimatedCost: staticCost,
+                              samplesUsed: sampleFiles.length,
+                            });
+                          }
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : "Preview failed");
+                        } finally {
+                          setEstimating(false);
+                        }
+                      }}
+                    >
+                      {estimating ? (
+                        <>
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          Running preview on 3 samples...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="mr-1 h-3 w-3" />
+                          Estimate Output Tokens (3 sample images)
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex justify-between pt-2">

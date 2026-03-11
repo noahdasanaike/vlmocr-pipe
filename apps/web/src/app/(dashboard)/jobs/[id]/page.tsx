@@ -479,6 +479,27 @@ export default function JobDetailPage({
         />
       </div>
 
+      {/* Cost & token stats — shown when any tokens tracked */}
+      {(job.total_cost > 0 || job.total_output_tokens > 0) && (
+        <div className="grid grid-cols-3 gap-3">
+          <MiniStat
+            icon={<Tag className="h-4 w-4 text-amber-500" />}
+            label="Cost"
+            value={`${job.total_cost.toFixed(1)} cr`}
+          />
+          <MiniStat
+            icon={<Cpu className="h-4 w-4 text-slate-400" />}
+            label="Input Tokens"
+            value={job.total_input_tokens.toLocaleString()}
+          />
+          <MiniStat
+            icon={<Cpu className="h-4 w-4 text-slate-400" />}
+            label="Output Tokens"
+            value={job.total_output_tokens.toLocaleString()}
+          />
+        </div>
+      )}
+
       {/* Metrics summary — shown when ground truth exists */}
       {(() => {
         const withNes = images.filter((img) => img.nes != null);

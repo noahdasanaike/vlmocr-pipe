@@ -2,11 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArtFooter } from "@/components/art-footer";
-import { Plus, FileImage, Clock, CheckCircle2 } from "lucide-react";
+import { Plus, FileImage, Clock, CheckCircle2, Coins } from "lucide-react";
 import type { Job, JobStatus } from "@/lib/types";
 
 const statusConfig: Record<JobStatus, { color: string; bg: string }> = {
@@ -47,6 +46,7 @@ export default function DashboardPage() {
     ["labeling", "training", "inferring"].includes(j.status)
   );
   const completedJobs = jobs.filter((j) => j.status === "complete");
+  const totalCost = jobs.reduce((s, j) => s + (j.total_cost ?? 0), 0);
 
   if (loading) {
     return (
@@ -75,7 +75,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard
           label="Total Jobs"
           value={String(jobs.length)}
@@ -90,6 +90,11 @@ export default function DashboardPage() {
           label="Completed"
           value={String(completedJobs.length)}
           icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+        />
+        <StatCard
+          label="Total Cost"
+          value={`${totalCost.toFixed(1)} cr`}
+          icon={<Coins className="h-4 w-4 text-amber-500" />}
         />
       </div>
 
@@ -186,16 +191,7 @@ export default function DashboardPage() {
       ) : (
         /* Empty state */
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white overflow-hidden">
-          <div className="relative h-44">
-            <Image
-              src="/art/monet-haystacks-snow.jpg"
-              alt=""
-              fill
-              className="object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-white via-white/60 to-transparent" />
-          </div>
-          <div className="px-8 pb-8 -mt-10 relative text-center">
+          <div className="px-8 py-10 text-center">
             <h3 className="text-lg font-semibold text-slate-900">
               No jobs yet
             </h3>

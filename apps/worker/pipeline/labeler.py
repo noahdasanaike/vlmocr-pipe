@@ -35,7 +35,7 @@ Fields to extract:
 
 Return valid JSON only, no markdown formatting."""
 
-        predicted_text, _latency = await call_model(
+        predicted_text, _latency, _in_tok, _out_tok = await call_model(
             image_bytes=image_bytes,
             filename="label_image.jpg",
             prompt=prompt,

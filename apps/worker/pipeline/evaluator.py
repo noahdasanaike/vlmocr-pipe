@@ -156,8 +156,8 @@ async def call_model(
     config: dict | None = None,
     max_tokens: int = 512,
     retries: int = 5,
-) -> tuple[str, float]:
-    """Call a VLM API and return (predicted_text, latency_seconds).
+) -> tuple[str, float, int, int]:
+    """Call a VLM API and return (predicted_text, latency_seconds, input_tokens, output_tokens).
 
     Dispatches to the appropriate provider backend with model-specific
     content formatting and reasoning/thinking control.
@@ -382,7 +382,12 @@ async def call_model(
         if "dots.ocr" in model_api_id or "dots-ocr" in model_api_id:
             text = parse_dots_ocr_output(text)
 
-        return text, elapsed
+        # Extract token usage (OpenAI-compatible format)
+        usage = data.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+
+        return text, elapsed, input_tokens, output_tokens
 
 
 async def _call_replicate(
@@ -391,7 +396,7 @@ async def _call_replicate(
     filename: str,
     api_token: str,
     retries: int = 5,
-) -> tuple[str, float]:
+) -> tuple[str, float, int, int]:
     """Call Replicate API with image bytes. Returns (text, latency)."""
     t0 = time.time()
     data_uri = _encode_image_bytes(image_bytes, filename)
@@ -431,7 +436,7 @@ async def _call_replicate(
                 elapsed = time.time() - t0
                 output = prediction["output"]
                 text = parse_dots_ocr_output(output)
-                return text, elapsed
+                return text, elapsed, 0, 0
 
         except Exception as e:
             if attempt < retries - 1 and ("timeout" in str(e).lower() or "429" in str(e)):
@@ -474,7 +479,7 @@ async def _call_google_native(
     reasoning_effort: str = "low",
     max_tokens: int = 512,
     retries: int = 5,
-) -> tuple[str, float]:
+) -> tuple[str, float, int, int]:
     """Call the native Gemini generateContent API.
 
     Used instead of the OpenAI-compat endpoint when features like
@@ -574,7 +579,12 @@ async def _call_google_native(
                 f"Last 100 chars: ...{text[-100:]}"
             )
 
-        return text, elapsed
+        # Gemini native token usage
+        usage_meta = data.get("usageMetadata", {})
+        input_tokens = usage_meta.get("promptTokenCount", 0)
+        output_tokens = usage_meta.get("candidatesTokenCount", 0)
+
+        return text, elapsed, input_tokens, output_tokens
 
 
 # ── Google Gemini batch API (50% cost savings) ────────────────────────

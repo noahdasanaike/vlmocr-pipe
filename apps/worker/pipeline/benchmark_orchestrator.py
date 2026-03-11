@@ -108,7 +108,7 @@ class BenchmarkOrchestrator:
                     image_bytes = await self.storage.download_image(sample["storage_path"])
 
                     # Call model
-                    predicted_text, latency = await call_model(
+                    predicted_text, latency, _in_tok, _out_tok = await call_model(
                         image_bytes=image_bytes,
                         filename=sample["filename"],
                         prompt=prompt,

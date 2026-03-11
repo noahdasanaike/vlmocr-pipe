@@ -58,6 +58,15 @@ export function getDb(): Database.Database {
   } catch {
     // Column already exists
   }
+  try {
+    _db.exec("ALTER TABLE jobs ADD COLUMN total_input_tokens INTEGER NOT NULL DEFAULT 0");
+  } catch { /* exists */ }
+  try {
+    _db.exec("ALTER TABLE jobs ADD COLUMN total_output_tokens INTEGER NOT NULL DEFAULT 0");
+  } catch { /* exists */ }
+  try {
+    _db.exec("ALTER TABLE jobs ADD COLUMN total_cost REAL NOT NULL DEFAULT 0");
+  } catch { /* exists */ }
 
   return _db;
 }

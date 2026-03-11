@@ -90,10 +90,20 @@ class PipelineOrchestrator:
             f"No explanation, just the JSON."
         )
 
+        # Look up cost per image for the model
+        cost_per_image = 0.0
+        if job.get("eval_model_id"):
+            eval_model = self.storage.get_eval_model(job["eval_model_id"])
+            if eval_model:
+                cost_per_image = eval_model.get("cost_per_image_credits", 0)
+
         # Skip already-inferred images (resumption support)
         pending_images = [img for img in all_images if img.get("infer_status") not in ("complete", "failed")]
         inferred_count = sum(1 for img in all_images if img.get("infer_status") == "complete")
         failed_count = sum(1 for img in all_images if img.get("infer_status") == "failed")
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_cost = inferred_count * cost_per_image
         if inferred_count > 0 or failed_count > 0:
             logger.info(f"Resuming: {inferred_count} complete, {failed_count} failed, {len(pending_images)} pending")
 
@@ -105,7 +115,7 @@ class PipelineOrchestrator:
 
             try:
                 image_bytes = await self.storage.download_image(img["storage_path"])
-                predicted_text, _latency = await call_model(
+                predicted_text, _latency, in_tok, out_tok = await call_model(
                     image_bytes=image_bytes,
                     filename=img["filename"],
                     prompt=prompt,
@@ -114,6 +124,8 @@ class PipelineOrchestrator:
                     provider_base_url=provider_base_url,
                     config=model_config,
                 )
+                total_input_tokens += in_tok
+                total_output_tokens += out_tok
 
                 # Parse JSON from response
                 try:
@@ -137,15 +149,22 @@ class PipelineOrchestrator:
                     infer_status="complete",
                 )
                 inferred_count += 1
+                total_cost += cost_per_image
                 await self.update_job_status(
-                    job_id, "inferring", inferred_count=inferred_count, failed_count=failed_count
+                    job_id, "inferring",
+                    inferred_count=inferred_count, failed_count=failed_count,
+                    total_input_tokens=total_input_tokens, total_output_tokens=total_output_tokens,
+                    total_cost=total_cost,
                 )
             except Exception as e:
                 logger.error(f"Failed to infer image {img['id']}: {e}")
                 self.storage.update_image(img["id"], infer_status="failed")
                 failed_count += 1
                 await self.update_job_status(
-                    job_id, "inferring", inferred_count=inferred_count, failed_count=failed_count
+                    job_id, "inferring",
+                    inferred_count=inferred_count, failed_count=failed_count,
+                    total_input_tokens=total_input_tokens, total_output_tokens=total_output_tokens,
+                    total_cost=total_cost,
                 )
 
         # Complete
@@ -154,6 +173,9 @@ class PipelineOrchestrator:
             "complete",
             inferred_count=inferred_count,
             failed_count=failed_count,
+            total_input_tokens=total_input_tokens,
+            total_output_tokens=total_output_tokens,
+            total_cost=total_cost,
             completed_at=datetime.now(timezone.utc).isoformat(),
         )
         logger.info(f"Inference-only job {job_id} completed ({inferred_count} inferred, {failed_count} failed)")

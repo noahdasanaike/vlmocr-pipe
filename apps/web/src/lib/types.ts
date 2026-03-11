@@ -45,6 +45,9 @@ export interface Job {
   labeled_count: number;
   inferred_count: number;
   failed_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost: number;
   eval_model_id: string | null;
   eval_model_api_id: string | null;
   eval_model_provider_slug: string | null;
