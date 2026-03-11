@@ -1,11 +1,17 @@
 import Database from "better-sqlite3";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { mkdirSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, resolve } from "path";
 
-// Resolve project root (where package.json lives) by walking up from this file
+// Resolve project root — walk up from cwd or known markers
 function findProjectRoot(): string {
-  // In Next.js, process.cwd() is the project root
+  // Try cwd first (Next.js sets cwd to project root)
+  let dir = process.cwd();
+  for (let i = 0; i < 5; i++) {
+    if (existsSync(join(dir, "src", "lib", "db", "schema.sql"))) return dir;
+    if (existsSync(join(dir, "apps", "web", "src", "lib", "db", "schema.sql"))) return join(dir, "apps", "web");
+    dir = dirname(dir);
+  }
   return process.cwd();
 }
 
