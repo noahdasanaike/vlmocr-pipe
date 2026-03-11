@@ -75,7 +75,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 ${totalCost > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-4`}>
         <StatCard
           label="Total Jobs"
           value={String(jobs.length)}
@@ -91,11 +91,13 @@ export default function DashboardPage() {
           value={String(completedJobs.length)}
           icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
         />
-        <StatCard
-          label="Total Cost"
-          value={`${totalCost.toFixed(1)} cr`}
-          icon={<Coins className="h-4 w-4 text-amber-500" />}
-        />
+        {totalCost > 0 && (
+          <StatCard
+            label="Total Cost"
+            value={`${totalCost.toFixed(1)} cr`}
+            icon={<Coins className="h-4 w-4 text-amber-500" />}
+          />
+        )}
       </div>
 
       {/* Jobs list */}
