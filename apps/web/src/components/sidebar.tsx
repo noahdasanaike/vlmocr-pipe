@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
@@ -10,11 +9,13 @@ import {
   Database,
   Settings,
   BarChart3,
+  ScanSearch,
 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/jobs/new", label: "New Job", icon: Plus },
+  { href: "/compare", label: "Compare", icon: ScanSearch },
   { href: "/benchmarks", label: "Benchmarks", icon: BarChart3 },
   { href: "/models", label: "Saved Models", icon: Database },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -25,21 +26,11 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-60 flex-col bg-slate-100">
-      {/* Winter painting header */}
-      <div className="relative h-36 shrink-0 overflow-hidden">
-        <Image
-          src="/art/monet-sandvika-snow.jpg"
-          alt=""
-          fill
-          className="object-cover"
-          priority
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-slate-100" />
-        <div className="absolute bottom-3 left-4 z-10">
-          <h1 className="text-base font-semibold text-slate-800 drop-shadow-[0_1px_2px_rgba(255,255,255,0.8)]">
-            vlmocr-pipe
-          </h1>
-        </div>
+      {/* Header */}
+      <div className="shrink-0 px-4 pt-5 pb-2">
+        <h1 className="text-base font-semibold text-slate-800">
+          vlmocr-pipe
+        </h1>
       </div>
 
       {/* Nav */}
