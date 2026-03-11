@@ -3,9 +3,13 @@ import { readFileSync, existsSync } from "fs";
 import { mkdirSync } from "fs";
 import { join, dirname, resolve } from "path";
 
-// Resolve project root — walk up from cwd or known markers
+// Resolve project root — this file lives at src/lib/db/index.ts
 function findProjectRoot(): string {
-  // Try cwd first (Next.js sets cwd to project root)
+  // Most reliable: __dirname is src/lib/db, so go up 3 levels to apps/web
+  const fromFile = resolve(__dirname, "..", "..", "..");
+  if (existsSync(join(fromFile, "src", "lib", "db", "schema.sql"))) return fromFile;
+
+  // Fallback: walk up from cwd
   let dir = process.cwd();
   for (let i = 0; i < 5; i++) {
     if (existsSync(join(dir, "src", "lib", "db", "schema.sql"))) return dir;
