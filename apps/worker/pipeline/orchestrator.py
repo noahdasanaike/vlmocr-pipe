@@ -91,10 +91,11 @@ class PipelineOrchestrator:
         )
 
         # Skip already-inferred images (resumption support)
-        pending_images = [img for img in all_images if img.get("infer_status") != "complete"]
-        inferred_count = len(all_images) - len(pending_images)
-        if inferred_count > 0:
-            logger.info(f"Skipping {inferred_count} already-inferred images")
+        pending_images = [img for img in all_images if img.get("infer_status") not in ("complete", "failed")]
+        inferred_count = sum(1 for img in all_images if img.get("infer_status") == "complete")
+        failed_count = sum(1 for img in all_images if img.get("infer_status") == "failed")
+        if inferred_count > 0 or failed_count > 0:
+            logger.info(f"Resuming: {inferred_count} complete, {failed_count} failed, {len(pending_images)} pending")
 
         for img in pending_images:
             # Check for cancellation
@@ -137,20 +138,25 @@ class PipelineOrchestrator:
                 )
                 inferred_count += 1
                 await self.update_job_status(
-                    job_id, "inferring", inferred_count=inferred_count
+                    job_id, "inferring", inferred_count=inferred_count, failed_count=failed_count
                 )
             except Exception as e:
                 logger.error(f"Failed to infer image {img['id']}: {e}")
                 self.storage.update_image(img["id"], infer_status="failed")
+                failed_count += 1
+                await self.update_job_status(
+                    job_id, "inferring", inferred_count=inferred_count, failed_count=failed_count
+                )
 
         # Complete
         await self.update_job_status(
             job_id,
             "complete",
             inferred_count=inferred_count,
+            failed_count=failed_count,
             completed_at=datetime.now(timezone.utc).isoformat(),
         )
-        logger.info(f"Inference-only job {job_id} completed ({inferred_count} images)")
+        logger.info(f"Inference-only job {job_id} completed ({inferred_count} inferred, {failed_count} failed)")
 
     async def run(self, job_id: str):
         """Run the full pipeline for a job."""

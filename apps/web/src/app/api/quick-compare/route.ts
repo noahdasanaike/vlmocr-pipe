@@ -172,8 +172,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid model_ids JSON" }, { status: 400 });
     }
 
-    if (!Array.isArray(modelIds) || modelIds.length < 2 || modelIds.length > 4) {
-      return NextResponse.json({ error: "Select 2-4 models" }, { status: 400 });
+    if (!Array.isArray(modelIds) || modelIds.length < 1 || modelIds.length > 4) {
+      return NextResponse.json({ error: "Select 1-4 models" }, { status: 400 });
     }
 
     let schema: Record<string, string> = {};

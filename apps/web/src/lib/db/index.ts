@@ -53,6 +53,11 @@ export function getDb(): Database.Database {
   } catch {
     // Column already exists
   }
+  try {
+    _db.exec("ALTER TABLE jobs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // Column already exists
+  }
 
   return _db;
 }

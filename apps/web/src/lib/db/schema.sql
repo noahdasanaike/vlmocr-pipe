@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   infer_images INTEGER NOT NULL DEFAULT 0,
   labeled_count INTEGER NOT NULL DEFAULT 0,
   inferred_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
   eval_model_id TEXT,
   eval_model_api_id TEXT,
   eval_model_provider_slug TEXT,

@@ -882,33 +882,32 @@ export default function NewJobPage() {
               <p className="text-xs text-slate-400">
                 Choose an off-the-shelf model to run on all {images.length.toLocaleString()} images.
               </p>
-              <div className="space-y-3 max-h-64 overflow-y-auto">
-                {evalProviders.map((provider) => (
-                  <div key={provider.id}>
-                    <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1.5">{provider.name}</p>
-                    <div className="space-y-1">
-                      {provider.models.map((model) => (
-                        <label
-                          key={model.id}
-                          className={`flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
-                            selectedEvalModel === model.id
-                              ? "border-indigo-300 bg-indigo-50"
-                              : "border-slate-200 hover:bg-slate-50"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="eval_model"
-                            checked={selectedEvalModel === model.id}
-                            onChange={() => setSelectedEvalModel(model.id)}
-                            className="accent-indigo-600"
-                          />
-                          <span className="flex-1 text-sm text-slate-900">{model.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {evalProviders
+                  .flatMap((provider) =>
+                    provider.models.map((model) => ({ ...model, providerName: provider.name }))
+                  )
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((model) => (
+                    <label
+                      key={model.id}
+                      className={`flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                        selectedEvalModel === model.id
+                          ? "border-indigo-300 bg-indigo-50"
+                          : "border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="eval_model"
+                        checked={selectedEvalModel === model.id}
+                        onChange={() => setSelectedEvalModel(model.id)}
+                        className="accent-indigo-600"
+                      />
+                      <span className="flex-1 text-sm text-slate-900">{model.name}</span>
+                      <span className="text-[10px] text-slate-400">{model.providerName}</span>
+                    </label>
+                  ))}
               </div>
             </div>
           )}
@@ -1019,42 +1018,41 @@ export default function NewJobPage() {
                 <span className="text-[10px] text-slate-400 font-normal ml-1">Preview model outputs before committing</span>
               </button>
 
-              {/* Model multi-select */}
+              {/* Model multi-select — alphabetical flat list with provider */}
               <div className="space-y-2">
-                <p className="text-xs text-slate-500">Select 2–4 models to compare on your images:</p>
-                <div className="space-y-3 max-h-56 overflow-y-auto">
-                  {evalProviders.map((provider) => (
-                    <div key={provider.id}>
-                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider mb-1">{provider.name}</p>
-                      <div className="space-y-1">
-                        {provider.models.map((model) => (
-                          <label
-                            key={model.id}
-                            className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 cursor-pointer transition-colors text-sm ${
-                              qcModels.has(model.id)
-                                ? "border-indigo-300 bg-indigo-50"
-                                : "border-slate-200 hover:bg-slate-50"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={qcModels.has(model.id)}
-                              onChange={() => {
-                                setQcModels((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(model.id)) next.delete(model.id);
-                                  else if (next.size < 4) next.add(model.id);
-                                  return next;
-                                });
-                              }}
-                              className="accent-indigo-600"
-                            />
-                            <span className="flex-1 text-slate-900">{model.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                <p className="text-xs text-slate-500">Select 1–4 models to compare on your images:</p>
+                <div className="space-y-1 max-h-56 overflow-y-auto">
+                  {evalProviders
+                    .flatMap((provider) =>
+                      provider.models.map((model) => ({ ...model, providerName: provider.name }))
+                    )
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((model) => (
+                      <label
+                        key={model.id}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 cursor-pointer transition-colors text-sm ${
+                          qcModels.has(model.id)
+                            ? "border-indigo-300 bg-indigo-50"
+                            : "border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={qcModels.has(model.id)}
+                          onChange={() => {
+                            setQcModels((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(model.id)) next.delete(model.id);
+                              else if (next.size < 4) next.add(model.id);
+                              return next;
+                            });
+                          }}
+                          className="accent-indigo-600"
+                        />
+                        <span className="flex-1 text-slate-900">{model.name}</span>
+                        <span className="text-[10px] text-slate-400">{model.providerName}</span>
+                      </label>
+                    ))}
                 </div>
               </div>
 
@@ -1062,7 +1060,7 @@ export default function NewJobPage() {
               <Button
                 variant="outline"
                 className="rounded-lg w-full"
-                disabled={qcModels.size < 2 || qcRunning || Object.keys(schema).length === 0}
+                disabled={qcModels.size < 1 || qcRunning || Object.keys(schema).length === 0}
                 onClick={async () => {
                   setQcRunning(true);
                   setQcResults(null);
@@ -1096,7 +1094,7 @@ export default function NewJobPage() {
                 ) : (
                   <>
                     <BarChart3 className="mr-2 h-4 w-4" />
-                    Run Quick Compare ({qcModels.size}/2-4 models)
+                    Run Quick Compare ({qcModels.size} model{qcModels.size !== 1 ? "s" : ""})
                   </>
                 )}
               </Button>
@@ -1118,18 +1116,28 @@ export default function NewJobPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {qcResults[0]?.outputs.map((_, idx) => (
-                          <tr key={idx} className="border-b border-slate-100 last:border-0">
-                            <td className="px-3 py-2 font-mono text-slate-500 align-top">
-                              {qcResults[0].outputs[idx].filename}
-                            </td>
-                            {qcResults.map((r) => (
-                              <td key={r.modelId} className="px-3 py-2 text-slate-800 align-top max-w-[300px] whitespace-pre-wrap break-words text-[11px]">
-                                {r.outputs[idx]?.text ?? "\u2014"}
+                        {qcResults[0]?.outputs.map((_, idx) => {
+                          const fname = qcResults[0].outputs[idx].filename;
+                          const imgEntry = images.find((img) => img.filename === fname);
+                          const thumbUrl = imgEntry?.file ? URL.createObjectURL(imgEntry.file) : undefined;
+                          return (
+                            <tr key={idx} className="border-b border-slate-100 last:border-0">
+                              <td className="px-3 py-2 align-top">
+                                <div className="flex items-start gap-2">
+                                  {thumbUrl && (
+                                    <img src={thumbUrl} alt="" className="h-12 w-12 rounded object-cover flex-shrink-0" />
+                                  )}
+                                  <span className="font-mono text-slate-500 text-[11px] break-all">{fname}</span>
+                                </div>
                               </td>
-                            ))}
-                          </tr>
-                        ))}
+                              {qcResults.map((r) => (
+                                <td key={r.modelId} className="px-3 py-2 text-slate-800 align-top max-w-[300px] whitespace-pre-wrap break-words text-[11px]">
+                                  {r.outputs[idx]?.text ?? "\u2014"}
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

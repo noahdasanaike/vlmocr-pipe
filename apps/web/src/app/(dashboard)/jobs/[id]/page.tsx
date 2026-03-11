@@ -362,7 +362,7 @@ export default function JobDetailPage({
                 job.status === "inferring" ? "bg-indigo-400 animate-pulse" :
                 job.status === "complete" ? "bg-emerald-400" : "bg-slate-200"
               }`} />
-              <span>Infer {job.inferred_count}/{job.infer_images}</span>
+              <span>Infer {job.inferred_count}/{job.infer_images}{job.failed_count > 0 ? ` (${job.failed_count} failed)` : ""}</span>
             </div>
           </div>
         )}
@@ -454,7 +454,7 @@ export default function JobDetailPage({
         <MiniStat
           icon={<Cpu className="h-4 w-4 text-indigo-500" />}
           label="Inferred"
-          value={`${job.inferred_count}/${job.infer_images}`}
+          value={`${job.inferred_count}/${job.infer_images}${job.failed_count > 0 ? ` (${job.failed_count} failed)` : ""}`}
         />
       </div>
 
