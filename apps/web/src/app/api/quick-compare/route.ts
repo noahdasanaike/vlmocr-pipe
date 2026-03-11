@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
         const model = allModels.find((m) => m.id === id);
         if (!model) return null;
         const provider = allProviders.find((p) => p.id === model.provider_id);
-        if (!provider || provider.slug === "replicate") return null;
+        if (!provider || ["replicate", "ollama", "vllm"].includes(provider.slug as string)) return null;
         return { model, provider };
       })
       .filter(Boolean) as { model: Record<string, unknown>; provider: Record<string, unknown> }[];

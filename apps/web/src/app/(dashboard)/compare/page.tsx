@@ -40,7 +40,9 @@ export default function ComparePage() {
         const res = await fetch("/api/benchmarks/models");
         if (!res.ok) return;
         const { models: m, providers: p } = await res.json();
+        const excludeSlugs = ["ollama", "vllm", "replicate"];
         const flat = (p as EvalProvider[])
+          .filter((prov) => !excludeSlugs.includes(prov.slug))
           .flatMap((prov) =>
             (m as EvalModel[])
               .filter((mod) => mod.provider_id === prov.id)
