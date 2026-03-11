@@ -76,6 +76,7 @@ export interface JobImage {
   ground_truth: string | null;
   nes: number | null;
   cer: number | null;
+  error_message: string | null;
   created_at: string;
 }
 

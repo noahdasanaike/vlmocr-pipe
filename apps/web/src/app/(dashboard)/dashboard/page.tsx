@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArtFooter } from "@/components/art-footer";
-import { Plus, FileImage, Clock, CheckCircle2, DollarSign, CircleDot, Settings, ArrowRight } from "lucide-react";
+import { Plus, FileImage, Clock, CheckCircle2, DollarSign, CircleDot, Settings, ArrowRight, Search, X, Trash2, Loader2 } from "lucide-react";
 import type { Job, JobStatus } from "@/lib/types";
 
 const statusConfig: Record<JobStatus, { color: string; bg: string }> = {
@@ -31,6 +31,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [workerAlive, setWorkerAlive] = useState<boolean | null>(null);
   const [hasKeys, setHasKeys] = useState<boolean | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -54,13 +58,50 @@ export default function DashboardPage() {
       const keyNames = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "DEEPINFRA_API_KEY", "NOVITA_API_KEY", "DASHSCOPE_API_KEY"];
       setHasKeys(keyNames.some((k) => !!d[k]));
     }).catch(() => setHasKeys(false));
+
+    // Auto-refresh every 5s for active job progress
+    const interval = setInterval(fetchJobs, 5000);
+    return () => clearInterval(interval);
   }, [fetchJobs]);
+
+  function toggleJobSelection(jobId: string, e: React.MouseEvent) {
+    e.preventDefault(); // prevent Link navigation
+    e.stopPropagation();
+    setSelectedJobs((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  }
+
+  async function bulkDelete() {
+    if (selectedJobs.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(
+        Array.from(selectedJobs).map((jobId) =>
+          fetch(`/api/jobs/${jobId}?purge=true`, { method: "DELETE" })
+        )
+      );
+      setSelectedJobs(new Set());
+      await fetchJobs();
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
 
   const activeJobs = jobs.filter((j) =>
     ["labeling", "training", "inferring"].includes(j.status)
   );
   const completedJobs = jobs.filter((j) => j.status === "complete");
   const totalSpend = jobs.reduce((s, j) => s + (j.total_cost ?? 0), 0);
+
+  const filteredJobs = jobs.filter((j) => {
+    if (statusFilter !== "all" && j.status !== statusFilter) return false;
+    if (search && !j.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   if (loading) {
     return (
@@ -115,11 +156,74 @@ export default function DashboardPage() {
       {/* Jobs list */}
       {jobs.length > 0 ? (
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wider">
-            Job History
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wider shrink-0">
+              Job History
+            </h2>
+            <div className="flex-1" />
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search jobs..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-8 w-48 rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300"
+            >
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="labeling">Labeling</option>
+              <option value="training">Training</option>
+              <option value="inferring">Inferring</option>
+              <option value="complete">Complete</option>
+              <option value="failed">Failed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="paused">Paused</option>
+            </select>
+          </div>
+          {selectedJobs.size > 0 && (
+            <div className="flex items-center gap-3 rounded-lg bg-red-50 border border-red-200 px-4 py-2">
+              <span className="text-xs font-medium text-red-800">
+                {selectedJobs.size} job{selectedJobs.size !== 1 ? "s" : ""} selected
+              </span>
+              <div className="flex-1" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-lg text-xs h-7 text-slate-600"
+                onClick={() => setSelectedJobs(new Set())}
+              >
+                Clear
+              </Button>
+              <Button
+                size="sm"
+                className="rounded-lg text-xs h-7 bg-red-600 hover:bg-red-700"
+                onClick={bulkDelete}
+                disabled={bulkDeleting}
+              >
+                {bulkDeleting ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Trash2 className="mr-1.5 h-3 w-3" />}
+                Delete Selected
+              </Button>
+            </div>
+          )}
           <div className="space-y-2">
-            {jobs.map((job) => {
+            {filteredJobs.length === 0 ? (
+              <p className="text-sm text-slate-400 py-6 text-center">No jobs match your filters.</p>
+            ) : filteredJobs.map((job) => {
               const progress =
                 job.status === "complete"
                   ? 100
@@ -144,6 +248,18 @@ export default function DashboardPage() {
                   href={`/jobs/${job.id}`}
                   className="group flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-5 py-4 transition-all hover:border-slate-300 hover:shadow-sm"
                 >
+                  <div
+                    className="shrink-0"
+                    onClick={(e) => toggleJobSelection(job.id, e)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedJobs.has(job.id)}
+                      readOnly
+                      className="accent-red-600 cursor-pointer"
+                    />
+                  </div>
+
                   {/* Progress ring */}
                   <div className="relative h-10 w-10 shrink-0">
                     <svg className="h-10 w-10 -rotate-90" viewBox="0 0 36 36">

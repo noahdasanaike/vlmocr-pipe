@@ -14,6 +14,7 @@ interface ProviderConfig {
   description: string;
   testUrl: string;
   testModel: string;
+  signupUrl: string;
   required?: boolean;
 }
 
@@ -24,6 +25,7 @@ const providers: ProviderConfig[] = [
     description: "Required for Gemini models (labeling + inference). Most jobs use this.",
     testUrl: "https://generativelanguage.googleapis.com/v1beta/openai/models",
     testModel: "gemini-2.5-flash",
+    signupUrl: "https://aistudio.google.com/apikey",
     required: true,
   },
   {
@@ -32,6 +34,7 @@ const providers: ProviderConfig[] = [
     description: "Access GPT, Claude, Qwen, Llama, and 100+ other models via one key.",
     testUrl: "https://openrouter.ai/api/v1/models",
     testModel: "",
+    signupUrl: "https://openrouter.ai/keys",
     required: true,
   },
   {
@@ -40,6 +43,7 @@ const providers: ProviderConfig[] = [
     description: "Cheap inference for open models (olmOCR, DeepSeek-OCR, PaddleOCR).",
     testUrl: "https://api.deepinfra.com/v1/openai/models",
     testModel: "",
+    signupUrl: "https://deepinfra.com/dash/api_keys",
   },
   {
     name: "Novita",
@@ -47,6 +51,7 @@ const providers: ProviderConfig[] = [
     description: "Alternative provider for open models.",
     testUrl: "https://api.novita.ai/openai/models",
     testModel: "",
+    signupUrl: "https://novita.ai/dashboard/key",
   },
   {
     name: "DashScope",
@@ -54,6 +59,7 @@ const providers: ProviderConfig[] = [
     description: "Alibaba Cloud for Qwen models (cheapest Qwen pricing).",
     testUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models",
     testModel: "",
+    signupUrl: "https://dashscope.console.aliyun.com/apiKey",
   },
   {
     name: "Replicate",
@@ -61,6 +67,7 @@ const providers: ProviderConfig[] = [
     description: "Replicate API for running models on demand.",
     testUrl: "https://api.replicate.com/v1/models",
     testModel: "",
+    signupUrl: "https://replicate.com/account/api-tokens",
   },
   {
     name: "Qubrid",
@@ -68,6 +75,7 @@ const providers: ProviderConfig[] = [
     description: "Qubrid API for HunyuanOCR.",
     testUrl: "https://platform.qubrid.com/v1/models",
     testModel: "",
+    signupUrl: "https://platform.qubrid.com/settings",
   },
   {
     name: "ZenMux",
@@ -75,6 +83,7 @@ const providers: ProviderConfig[] = [
     description: "ZenMux API for ByteDance Seed 2.0 models.",
     testUrl: "https://zenmux.ai/api/v1/models",
     testModel: "",
+    signupUrl: "https://zenmux.ai/dashboard",
   },
 ];
 
@@ -330,6 +339,15 @@ export default function SettingsPage() {
 
               <p className="text-xs text-slate-500 mb-3">
                 {provider.description}
+                {" "}
+                <a
+                  href={provider.signupUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-500 hover:text-indigo-700 font-medium"
+                >
+                  Get key &rarr;
+                </a>
               </p>
 
               {/* Current key display */}

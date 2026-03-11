@@ -58,6 +58,8 @@ export default function BenchmarkDetailPage({
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerSample, setViewerSample] = useState<string>("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     async function fetchRun() {
@@ -114,6 +116,25 @@ export default function BenchmarkDetailPage({
 
   const cfg = statusConfig[run.status];
   const runModels = run.run_models ?? [];
+
+  const sortedModels = [...runModels].sort((a, b) => {
+    if (!sortCol) return (b.sococrbench_score ?? 0) - (a.sococrbench_score ?? 0);
+    const getVal = (rm: BenchmarkRunModel): number => {
+      switch (sortCol) {
+        case "sococrbench": return rm.sococrbench_score ?? 0;
+        case "region": return rm.macro_nes_region ?? 0;
+        case "period": return rm.macro_nes_period ?? 0;
+        case "format": return rm.macro_nes_format ?? 0;
+        case "nes": return rm.avg_nes ?? 0;
+        case "cer": return rm.avg_cer ?? 0;
+        case "latency": return rm.avg_latency_ms ?? Infinity;
+        case "errors": return rm.error_count ?? 0;
+        default: return 0;
+      }
+    };
+    const av = getVal(a), bv = getVal(b);
+    return sortDir === "asc" ? av - bv : bv - av;
+  });
 
   // Get unique sample filenames for the sample browser
   const uniqueSamples = [...new Set(results.map((r) => r.filename))];
@@ -224,21 +245,90 @@ export default function BenchmarkDetailPage({
               <TableHeader>
                 <TableRow className="bg-slate-50">
                   <TableHead className="text-xs">Model</TableHead>
-                  <TableHead className="text-xs text-right">SocOCRBench</TableHead>
-                  <TableHead className="text-xs text-right">Region NES</TableHead>
-                  <TableHead className="text-xs text-right">Period NES</TableHead>
-                  <TableHead className="text-xs text-right">Format NES</TableHead>
-                  <TableHead className="text-xs text-right">Avg NES</TableHead>
-                  <TableHead className="text-xs text-right">Avg CER</TableHead>
-                  <TableHead className="text-xs text-right">Latency</TableHead>
-                  <TableHead className="text-xs text-right">Errors</TableHead>
+                  <TableHead
+                    className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                    title="Overall benchmark score. Macro-average of NES across regions (Europe, East Asia, South Asia, SE Asia, MENA, East Africa)."
+                    onClick={() => {
+                      if (sortCol === "sococrbench") setSortDir(sortDir === "asc" ? "desc" : "asc");
+                      else { setSortCol("sococrbench"); setSortDir("desc"); }
+                    }}
+                  >
+                    SocOCRBench {sortCol === "sococrbench" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                    title="1.0 = perfect match, 0.0 = completely different. Measures character-level similarity between prediction and ground truth."
+                    onClick={() => {
+                      if (sortCol === "region") setSortDir(sortDir === "asc" ? "desc" : "asc");
+                      else { setSortCol("region"); setSortDir("desc"); }
+                    }}
+                  >
+                    Region NES {sortCol === "region" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                    title="1.0 = perfect match, 0.0 = completely different. Measures character-level similarity between prediction and ground truth."
+                    onClick={() => {
+                      if (sortCol === "period") setSortDir(sortDir === "asc" ? "desc" : "asc");
+                      else { setSortCol("period"); setSortDir("desc"); }
+                    }}
+                  >
+                    Period NES {sortCol === "period" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                    title="1.0 = perfect match, 0.0 = completely different. Measures character-level similarity between prediction and ground truth."
+                    onClick={() => {
+                      if (sortCol === "format") setSortDir(sortDir === "asc" ? "desc" : "asc");
+                      else { setSortCol("format"); setSortDir("desc"); }
+                    }}
+                  >
+                    Format NES {sortCol === "format" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                    title="1.0 = perfect match, 0.0 = completely different. Measures character-level similarity between prediction and ground truth."
+                    onClick={() => {
+                      if (sortCol === "nes") setSortDir(sortDir === "asc" ? "desc" : "asc");
+                      else { setSortCol("nes"); setSortDir("desc"); }
+                    }}
+                  >
+                    Avg NES {sortCol === "nes" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                    title="0.0 = perfect, 1.0 = all characters wrong. Lower is better."
+                    onClick={() => {
+                      if (sortCol === "cer") setSortDir(sortDir === "asc" ? "desc" : "asc");
+                      else { setSortCol("cer"); setSortDir("desc"); }
+                    }}
+                  >
+                    Avg CER {sortCol === "cer" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                    title="Average time per image in milliseconds."
+                    onClick={() => {
+                      if (sortCol === "latency") setSortDir(sortDir === "asc" ? "desc" : "asc");
+                      else { setSortCol("latency"); setSortDir("desc"); }
+                    }}
+                  >
+                    Latency {sortCol === "latency" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                    onClick={() => {
+                      if (sortCol === "errors") setSortDir(sortDir === "asc" ? "desc" : "asc");
+                      else { setSortCol("errors"); setSortDir("desc"); }
+                    }}
+                  >
+                    Errors {sortCol === "errors" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                  </TableHead>
                   <TableHead className="text-xs text-center">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {runModels
-                  .sort((a, b) => (b.sococrbench_score ?? 0) - (a.sococrbench_score ?? 0))
-                  .map((rm) => (
+                {sortedModels.map((rm) => (
                   <TableRow key={rm.id} className="hover:bg-slate-50/50">
                     <TableCell className="font-medium text-sm text-slate-900">
                       {rm.model?.name ?? "\u2014"}
@@ -295,7 +385,7 @@ export default function BenchmarkDetailPage({
             <h3 className="text-sm font-semibold text-slate-900">Sample Results</h3>
             <p className="text-xs text-slate-400">{uniqueSamples.length} samples, click to view details</p>
           </div>
-          <div className="max-h-96 overflow-auto">
+          <div className="max-h-[600px] overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50">
@@ -389,7 +479,7 @@ function SampleViewer({ filename, results }: { filename: string; results: Sample
           <div className="flex items-center gap-2 mb-1">
             <p className="text-xs font-medium text-slate-900">{r.model}</p>
             {r.nes != null && (
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+              <span title="1.0 = perfect match, 0.0 = completely different. Measures character-level similarity between prediction and ground truth." className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                 r.nes >= 0.8 ? "bg-emerald-50 text-emerald-700" :
                 r.nes >= 0.5 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"
               }`}>
@@ -397,10 +487,10 @@ function SampleViewer({ filename, results }: { filename: string; results: Sample
               </span>
             )}
             {r.cer != null && (
-              <span className="text-[10px] text-slate-400">CER {r.cer.toFixed(4)}</span>
+              <span title="0.0 = perfect, 1.0 = all characters wrong. Lower is better." className="text-[10px] text-slate-400">CER {r.cer.toFixed(4)}</span>
             )}
             {r.latency_ms != null && (
-              <span className="text-[10px] text-slate-400">{(r.latency_ms / 1000).toFixed(1)}s</span>
+              <span title="Average time per image in milliseconds." className="text-[10px] text-slate-400">{(r.latency_ms / 1000).toFixed(1)}s</span>
             )}
           </div>
           {r.error ? (

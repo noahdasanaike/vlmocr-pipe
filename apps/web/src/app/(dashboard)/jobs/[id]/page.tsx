@@ -22,7 +22,8 @@ import {
 import { ImageViewer } from "@/components/image-viewer";
 import { ArtFooter } from "@/components/art-footer";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Download, Loader2, Images, Tag, Cpu, Terminal, Play, Check, Square, Trash2, RotateCcw, Eye, BarChart3, Database, Pause, FolderOpen } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Images, Tag, Cpu, Terminal, Play, Check, Square, Trash2, RotateCcw, Eye, BarChart3, Database, Pause, FolderOpen, Copy, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import type { Job, JobImage, JobStatus } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -63,6 +64,9 @@ export default function JobDetailPage({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [viewerImage, setViewerImage] = useState<JobImage | null>(null);
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [resultSearch, setResultSearch] = useState("");
 
   async function fetchJob() {
     const res = await fetch(`/api/jobs/${id}`);
@@ -313,6 +317,19 @@ export default function JobDetailPage({
             Open Folder
           </Button>
 
+          {/* Duplicate job */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-lg text-xs h-8 text-slate-600"
+            asChild
+          >
+            <Link href={`/jobs/new?duplicate=${id}`}>
+              <Copy className="mr-1.5 h-3 w-3" />
+              Duplicate
+            </Link>
+          </Button>
+
           {/* Delete — always available */}
           {!showDeleteConfirm ? (
             <Button
@@ -500,6 +517,29 @@ export default function JobDetailPage({
         </div>
       )}
 
+      {/* Failed images */}
+      {(() => {
+        const failedImages = images.filter((img) => img.error_message);
+        if (failedImages.length === 0) return null;
+        return (
+          <div className="rounded-xl border border-red-200 bg-red-50/30 overflow-hidden">
+            <div className="px-5 py-3 border-b border-red-100">
+              <h3 className="text-sm font-semibold text-red-800">
+                Failed Images ({failedImages.length})
+              </h3>
+            </div>
+            <div className="max-h-48 overflow-auto divide-y divide-red-100">
+              {failedImages.map((img) => (
+                <div key={img.id} className="px-5 py-2 flex items-start gap-3">
+                  <span className="font-mono text-xs text-red-700 shrink-0">{img.filename}</span>
+                  <span className="text-xs text-red-600">{img.error_message}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Metrics summary — shown when ground truth exists */}
       {(() => {
         const withNes = images.filter((img) => img.nes != null);
@@ -661,7 +701,13 @@ export default function JobDetailPage({
               <h3 className="text-sm font-semibold text-slate-900">Results</h3>
               <p className="text-xs text-slate-400">{completedImages.length} images processed</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              <Input
+                placeholder="Search filenames..."
+                value={resultSearch}
+                onChange={(e) => setResultSearch(e.target.value)}
+                className="w-48 rounded-lg text-xs h-8"
+              />
               <Button variant="outline" size="sm" asChild className="rounded-lg text-xs h-8">
                 <a href={`/api/jobs/${id}/results?format=csv`} download>
                   <Download className="mr-1 h-3 w-3" />
@@ -676,26 +722,105 @@ export default function JobDetailPage({
               </Button>
             </div>
           </div>
-          <div className="max-h-96 overflow-auto">
+          <div className="max-h-[600px] overflow-auto">
+            {(() => {
+              const filteredImages = completedImages.filter((img) =>
+                resultSearch === "" || img.filename.toLowerCase().includes(resultSearch.toLowerCase())
+              );
+
+              const sortedImages = [...filteredImages].sort((a, b) => {
+                if (!sortCol) return 0;
+                let aVal: string | number = "";
+                let bVal: string | number = "";
+                if (sortCol === "filename") {
+                  aVal = a.filename;
+                  bVal = b.filename;
+                } else if (sortCol === "nes") {
+                  aVal = Number(a.nes ?? 0);
+                  bVal = Number(b.nes ?? 0);
+                } else if (sortCol === "cer") {
+                  aVal = Number(a.cer ?? 0);
+                  bVal = Number(b.cer ?? 0);
+                } else {
+                  const aRes = a.predicted_result ?? a.gemini_label;
+                  const bRes = b.predicted_result ?? b.gemini_label;
+                  aVal = String(aRes?.[sortCol] ?? "");
+                  bVal = String(bRes?.[sortCol] ?? "");
+                }
+                if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
+                if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+                return 0;
+              });
+
+              return (
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50">
                   <TableHead className="text-xs w-8"></TableHead>
-                  <TableHead className="text-xs">Filename</TableHead>
+                  <TableHead
+                    className="text-xs cursor-pointer hover:bg-slate-100 select-none"
+                    onClick={() => {
+                      if (sortCol === "filename") {
+                        setSortDir(sortDir === "asc" ? "desc" : "asc");
+                      } else {
+                        setSortCol("filename");
+                        setSortDir("asc");
+                      }
+                    }}
+                  >
+                    Filename {sortCol === "filename" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                  </TableHead>
                   <TableHead className="text-xs">Source</TableHead>
                   {Object.keys(job.extraction_schema).map((field) => (
-                    <TableHead key={field} className="text-xs">{field}</TableHead>
+                    <TableHead
+                      key={field}
+                      className="text-xs cursor-pointer hover:bg-slate-100 select-none"
+                      onClick={() => {
+                        if (sortCol === field) {
+                          setSortDir(sortDir === "asc" ? "desc" : "asc");
+                        } else {
+                          setSortCol(field);
+                          setSortDir("asc");
+                        }
+                      }}
+                    >
+                      {field} {sortCol === field ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                    </TableHead>
                   ))}
                   {images.some((img) => img.nes != null) && (
-                    <TableHead className="text-xs text-right">NES</TableHead>
+                    <TableHead
+                      className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                      onClick={() => {
+                        if (sortCol === "nes") {
+                          setSortDir(sortDir === "asc" ? "desc" : "asc");
+                        } else {
+                          setSortCol("nes");
+                          setSortDir("asc");
+                        }
+                      }}
+                    >
+                      NES {sortCol === "nes" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                    </TableHead>
                   )}
                   {images.some((img) => img.cer != null) && (
-                    <TableHead className="text-xs text-right">CER</TableHead>
+                    <TableHead
+                      className="text-xs text-right cursor-pointer hover:bg-slate-100 select-none"
+                      onClick={() => {
+                        if (sortCol === "cer") {
+                          setSortDir(sortDir === "asc" ? "desc" : "asc");
+                        } else {
+                          setSortCol("cer");
+                          setSortDir("asc");
+                        }
+                      }}
+                    >
+                      CER {sortCol === "cer" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
+                    </TableHead>
                   )}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {completedImages.map((img) => {
+                {sortedImages.map((img) => {
                   const result = img.predicted_result ?? img.gemini_label;
                   return (
                     <TableRow key={img.id} className="hover:bg-slate-50/50">
@@ -720,7 +845,18 @@ export default function JobDetailPage({
                         </span>
                       </TableCell>
                       {Object.keys(job.extraction_schema).map((field) => (
-                        <TableCell key={field} className="text-sm text-slate-700">
+                        <TableCell
+                          key={field}
+                          className="text-sm text-slate-700 cursor-pointer hover:bg-indigo-50/50 transition-colors"
+                          title="Click to copy"
+                          onClick={() => {
+                            const val = result?.[field];
+                            if (val) {
+                              navigator.clipboard.writeText(String(val));
+                              toast.success("Copied to clipboard");
+                            }
+                          }}
+                        >
                           {result?.[field] ?? "\u2014"}
                         </TableCell>
                       ))}
@@ -743,6 +879,8 @@ export default function JobDetailPage({
                 })}
               </TableBody>
             </Table>
+              );
+            })()}
           </div>
         </div>
       )}

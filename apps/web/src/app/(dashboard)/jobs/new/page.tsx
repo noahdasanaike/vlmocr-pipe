@@ -32,6 +32,7 @@ import {
   BarChart3,
   Coins,
   Zap,
+  Download,
 } from "lucide-react";
 import { ArtFooter } from "@/components/art-footer";
 import type { FinetuneModel, EvalModel, EvalProvider, ExtractionSchema, JobMode } from "@/lib/types";
@@ -120,6 +121,41 @@ export default function NewJobPage() {
   const [reasoningEffort, setReasoningEffort] = useState("low");
   const [mediaResolution, setMediaResolution] = useState("");
   const [structuredOutput, setStructuredOutput] = useState(false);
+
+  // Schema import from previous jobs
+  const [previousSchemas, setPreviousSchemas] = useState<{jobName: string; schema: Record<string, string>}[]>([]);
+  const [showSchemaImport, setShowSchemaImport] = useState(false);
+
+  // Handle ?duplicate=ID — pre-fill config from an existing job
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const dupId = params.get("duplicate");
+    if (!dupId) return;
+
+    fetch(`/api/jobs/${dupId}`)
+      .then((r) => r.json())
+      .then((job) => {
+        if (job.extraction_schema) {
+          setSchema(job.extraction_schema);
+        }
+        if (job.mode) {
+          setJobMode(job.mode);
+        }
+        if (job.label_ratio != null) {
+          setLabelRatio(Math.round(job.label_ratio * 100));
+        }
+        if (job.labeling_model_id) {
+          setSelectedLabelModel(job.labeling_model_id);
+        }
+        if (job.finetune_model_id) {
+          setSelectedFinetuneModel(job.finetune_model_id);
+        }
+        if (job.eval_model_id) {
+          setSelectedEvalModel(job.eval_model_id);
+        }
+      })
+      .catch(() => { /* ignore */ });
+  }, []);
 
   useEffect(() => {
     async function loadModels() {
@@ -811,7 +847,7 @@ export default function NewJobPage() {
               >
                 <p className="text-sm font-medium text-slate-900">Full Pipeline</p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Auto-label, fine-tune, then infer
+                  Label a subset with a large model, fine-tune a small model on those labels, then run the small model on all remaining images. Best for large batches (500+ images).
                 </p>
               </button>
               <button
@@ -824,7 +860,7 @@ export default function NewJobPage() {
               >
                 <p className="text-sm font-medium text-slate-900">Inference Only</p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Run an existing model on all images directly
+                  Send every image directly to a cloud model (Gemini, GPT, Claude, etc). Simpler and faster, best for smaller batches or when you need maximum accuracy.
                 </p>
               </button>
             </div>
@@ -879,8 +915,8 @@ export default function NewJobPage() {
                   step={5}
                 />
                 <p className="text-xs text-slate-400">
-                  {labelCount.toLocaleString()} images auto-labeled,{" "}
-                  {inferCount.toLocaleString()} for model inference. 20-40% is typical.
+                  {labelCount.toLocaleString()} images will be sent to the labeling model (e.g. Gemini) to create training data. The remaining{" "}
+                  {inferCount.toLocaleString()} images will be processed by your fine-tuned model. Higher ratio = better training quality but more API cost. 20-40% is typical.
                 </p>
               </div>
             </>
@@ -991,9 +1027,61 @@ export default function NewJobPage() {
                 Add Field
               </Button>
             </div>
-            <p className="text-xs text-slate-400">
-              Define what data to extract from each document.
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-slate-400 flex-1">
+                Define what data to extract from each document.
+              </p>
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7 text-slate-500 hover:text-slate-700"
+                  onClick={() => {
+                    if (!showSchemaImport) {
+                      fetch("/api/jobs/schemas")
+                        .then((r) => r.json())
+                        .then((data) => {
+                          setPreviousSchemas(data ?? []);
+                          setShowSchemaImport(true);
+                        })
+                        .catch(() => {
+                          toast.error("Failed to load previous schemas");
+                        });
+                    } else {
+                      setShowSchemaImport(false);
+                    }
+                  }}
+                >
+                  <Download className="mr-1 h-3 w-3" />
+                  Import from previous job
+                </Button>
+                {showSchemaImport && previousSchemas.length > 0 && (
+                  <div className="absolute right-0 top-8 z-50 w-64 rounded-lg border border-slate-200 bg-white shadow-lg py-1 max-h-48 overflow-y-auto">
+                    {previousSchemas.map((ps, idx) => (
+                      <button
+                        key={idx}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 transition-colors"
+                        onClick={() => {
+                          setSchema(ps.schema);
+                          setShowSchemaImport(false);
+                          toast.success(`Imported schema from "${ps.jobName}"`);
+                        }}
+                      >
+                        <span className="font-medium text-slate-700">{ps.jobName}</span>
+                        <span className="block text-slate-400 truncate">
+                          {Object.keys(ps.schema).join(", ")}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showSchemaImport && previousSchemas.length === 0 && (
+                  <div className="absolute right-0 top-8 z-50 w-64 rounded-lg border border-slate-200 bg-white shadow-lg py-3 px-3">
+                    <p className="text-xs text-slate-400">No previous schemas found.</p>
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="space-y-2">
               {Object.entries(schema).map(([key, desc], i) => (
                 <div key={i} className="flex gap-2">

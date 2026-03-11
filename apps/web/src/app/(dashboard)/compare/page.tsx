@@ -12,6 +12,8 @@ import {
   Loader2,
   BarChart3,
   ImageIcon,
+  Download,
+  Search,
 } from "lucide-react";
 import type { EvalProvider, EvalModel } from "@/lib/types";
 
@@ -37,6 +39,7 @@ export default function ComparePage() {
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<CompareResult[] | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [modelSearch, setModelSearch] = useState("");
 
   // Load models
   useEffect(() => {
@@ -143,7 +146,64 @@ export default function ComparePage() {
     }
   }
 
+  function triggerDownload(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCSV() {
+    if (!results) return;
+    const modelNames = results.map((r) => r.modelName);
+    const header = ["filename", ...modelNames]
+      .map((h) => `"${h.replace(/"/g, '""')}"`)
+      .join(",");
+    const rows = (results[0]?.outputs ?? []).map((_, idx) => {
+      const fname = results[0].outputs[idx].filename;
+      const cells = [fname, ...results.map((r) => r.outputs[idx]?.text ?? "")];
+      return cells.map((c) => `"${c.replace(/"/g, '""')}"`).join(",");
+    });
+    const csv = [header, ...rows].join("\n");
+    triggerDownload(new Blob([csv], { type: "text/csv" }), "compare-results.csv");
+  }
+
+  function exportJSON() {
+    if (!results) return;
+    const data = (results[0]?.outputs ?? []).map((_, idx) => {
+      const row: Record<string, string> = {
+        filename: results[0].outputs[idx].filename,
+      };
+      for (const r of results) {
+        row[r.modelName] = r.outputs[idx]?.text ?? "";
+      }
+      return row;
+    });
+    triggerDownload(
+      new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
+      "compare-results.json"
+    );
+  }
+
   const canRun = images.length > 0 && selectedModels.size >= 1 && !running;
+
+  // Enter key triggers compare
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && canRun) {
+        // Don't trigger if user is typing in an input
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        runCompare();
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  });
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -221,8 +281,28 @@ export default function ComparePage() {
           {/* Results */}
           {results && (
             <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-900">Results</h3>
+                <div className="flex gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportCSV}
+                    className="h-7 rounded-lg text-xs px-2.5"
+                  >
+                    <Download className="mr-1 h-3 w-3" />
+                    CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportJSON}
+                    className="h-7 rounded-lg text-xs px-2.5"
+                  >
+                    <Download className="mr-1 h-3 w-3" />
+                    JSON
+                  </Button>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -300,8 +380,18 @@ export default function ComparePage() {
                 {selectedModels.size}/4 selected
               </span>
             </div>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Filter models..."
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                className="w-full h-7 rounded-lg border border-slate-200 bg-white pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300"
+              />
+            </div>
             <div className="space-y-1 max-h-72 overflow-y-auto">
-              {models.map((model) => (
+              {models.filter((m) => !modelSearch || m.name.toLowerCase().includes(modelSearch.toLowerCase()) || m.providerName.toLowerCase().includes(modelSearch.toLowerCase())).map((model) => (
                 <label
                   key={model.id}
                   className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 cursor-pointer transition-colors text-sm ${
