@@ -60,16 +60,40 @@ class QueueConsumer:
                 conn.close()
         _retry_on_locked(_do)
 
+    def _heartbeat(self):
+        """Write a heartbeat timestamp so the web UI can detect if the worker is alive."""
+        def _do():
+            conn = self.storage._get_conn()
+            try:
+                conn.execute(
+                    "INSERT INTO settings (key, value, updated_at) VALUES ('WORKER_HEARTBEAT', datetime('now'), datetime('now')) "
+                    "ON CONFLICT(key) DO UPDATE SET value = datetime('now'), updated_at = datetime('now')"
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        try:
+            _retry_on_locked(_do)
+        except Exception:
+            pass  # Non-critical
+
     async def run(self):
         logger.info("Queue consumer starting (DB polling mode)...")
 
         self._recover_stale_jobs()
+        self._heartbeat()
         last_recovery = time.monotonic()
+        last_heartbeat = time.monotonic()
 
         while True:
             try:
-                # Periodic stale job recovery
+                # Periodic heartbeat (every poll)
                 now = time.monotonic()
+                if now - last_heartbeat >= POLL_INTERVAL:
+                    self._heartbeat()
+                    last_heartbeat = now
+
+                # Periodic stale job recovery
                 if now - last_recovery >= STALE_RECOVERY_INTERVAL:
                     self._recover_stale_jobs()
                     last_recovery = now

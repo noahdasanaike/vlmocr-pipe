@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArtFooter } from "@/components/art-footer";
-import { Plus, FileImage, Clock, CheckCircle2, DollarSign } from "lucide-react";
+import { Plus, FileImage, Clock, CheckCircle2, DollarSign, CircleDot, Settings, ArrowRight } from "lucide-react";
 import type { Job, JobStatus } from "@/lib/types";
 
 const statusConfig: Record<JobStatus, { color: string; bg: string }> = {
@@ -29,6 +29,8 @@ function formatCost(cost: number): string {
 export default function DashboardPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [workerAlive, setWorkerAlive] = useState<boolean | null>(null);
+  const [hasKeys, setHasKeys] = useState<boolean | null>(null);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -46,6 +48,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchJobs();
+    // Check worker + keys status
+    fetch("/api/worker-status").then((r) => r.json()).then((d) => setWorkerAlive(d.alive)).catch(() => setWorkerAlive(false));
+    fetch("/api/settings").then((r) => r.json()).then((d) => {
+      const keyNames = ["GEMINI_API_KEY", "OPENROUTER_API_KEY", "DEEPINFRA_API_KEY", "NOVITA_API_KEY", "DASHSCOPE_API_KEY"];
+      setHasKeys(keyNames.some((k) => !!d[k]));
+    }).catch(() => setHasKeys(false));
   }, [fetchJobs]);
 
   const activeJobs = jobs.filter((j) =>
@@ -203,21 +211,56 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : (
-        /* Empty state */
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white overflow-hidden">
-          <div className="px-8 py-10 text-center">
-            <h3 className="text-lg font-semibold text-slate-900">
-              No jobs yet
-            </h3>
-            <p className="mt-1 text-sm text-slate-500 max-w-sm mx-auto">
-              Upload document images and let AI extract structured data for you.
-            </p>
-            <Button asChild className="mt-4 rounded-lg">
-              <Link href="/jobs/new">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Your First Job
-              </Link>
-            </Button>
+        /* Empty state with setup guidance */
+        <div className="space-y-4">
+          {/* Setup checklist */}
+          {(workerAlive === false || hasKeys === false) && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-5 space-y-3">
+              <h3 className="text-sm font-semibold text-slate-900">Setup Checklist</h3>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 text-sm">
+                  <div className={`h-5 w-5 rounded-full flex items-center justify-center ${
+                    workerAlive ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-500"
+                  }`}>
+                    {workerAlive ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleDot className="h-3.5 w-3.5" />}
+                  </div>
+                  <span className={workerAlive ? "text-slate-500" : "text-slate-900 font-medium"}>
+                    {workerAlive ? "Worker process is running" : "Start the worker process (run start.bat or start.sh)"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <div className={`h-5 w-5 rounded-full flex items-center justify-center ${
+                    hasKeys ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"
+                  }`}>
+                    {hasKeys ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Settings className="h-3.5 w-3.5" />}
+                  </div>
+                  {hasKeys ? (
+                    <span className="text-slate-500">API keys configured</span>
+                  ) : (
+                    <Link href="/settings" className="text-slate-900 font-medium hover:text-indigo-600 flex items-center gap-1">
+                      Add API keys in Settings <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white overflow-hidden">
+            <div className="px-8 py-10 text-center">
+              <h3 className="text-lg font-semibold text-slate-900">
+                No jobs yet
+              </h3>
+              <p className="mt-1 text-sm text-slate-500 max-w-sm mx-auto">
+                Upload document images and let AI extract structured data for you.
+              </p>
+              <Button asChild className="mt-4 rounded-lg">
+                <Link href="/jobs/new">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Your First Job
+                </Link>
+              </Button>
+            </div>
           </div>
         </div>
       )}
