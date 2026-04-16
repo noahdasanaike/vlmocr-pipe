@@ -742,8 +742,10 @@ export default function JobDetailPage({
                   aVal = Number(a.cer ?? 0);
                   bVal = Number(b.cer ?? 0);
                 } else {
-                  const aRes = a.predicted_result ?? a.gemini_label;
-                  const bRes = b.predicted_result ?? b.gemini_label;
+                  const aRaw = a.predicted_result ?? a.gemini_label;
+                  const bRaw = b.predicted_result ?? b.gemini_label;
+                  const aRes = Array.isArray(aRaw) ? aRaw[0] : aRaw;
+                  const bRes = Array.isArray(bRaw) ? bRaw[0] : bRaw;
                   aVal = String(aRes?.[sortCol] ?? "");
                   bVal = String(bRes?.[sortCol] ?? "");
                 }
@@ -820,29 +822,38 @@ export default function JobDetailPage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedImages.map((img) => {
-                  const result = img.predicted_result ?? img.gemini_label;
-                  return (
-                    <TableRow key={img.id} className="hover:bg-slate-50/50">
+                {sortedImages.flatMap((img) => {
+                  const raw = img.predicted_result ?? img.gemini_label;
+                  const rows: Record<string, string>[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
+                  if (rows.length === 0) rows.push(Object.fromEntries(Object.keys(job.extraction_schema).map(k => [k, undefined])) as any);
+                  return rows.map((result, rowIdx) => (
+                    <TableRow key={`${img.id}-${rowIdx}`} className="hover:bg-slate-50/50">
                       <TableCell className="w-8 px-2">
-                        <button
-                          onClick={() => setViewerImage(img)}
-                          className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
+                        {rowIdx === 0 ? (
+                          <button
+                            onClick={() => setViewerImage(img)}
+                            className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
                       </TableCell>
                       <TableCell className="font-mono text-xs text-slate-600">
-                        {img.filename}
+                        {rowIdx === 0 ? img.filename : ""}
+                        {rowIdx === 0 && rows.length > 1 && (
+                          <span className="ml-1.5 text-[10px] text-slate-400">({rows.length} rows)</span>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                          img.role === "label_source"
-                            ? "bg-amber-50 text-amber-700"
-                            : "bg-indigo-50 text-indigo-700"
-                        }`}>
-                          {img.role === "label_source" ? "Label" : "Model"}
-                        </span>
+                        {rowIdx === 0 && (
+                          <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                            img.role === "label_source"
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-indigo-50 text-indigo-700"
+                          }`}>
+                            {img.role === "label_source" ? "Label" : "Model"}
+                          </span>
+                        )}
                       </TableCell>
                       {Object.keys(job.extraction_schema).map((field) => (
                         <TableCell
@@ -862,20 +873,20 @@ export default function JobDetailPage({
                       ))}
                       {images.some((i) => i.nes != null) && (
                         <TableCell className="text-right font-mono text-xs">
-                          {img.nes != null ? (
+                          {rowIdx === 0 && img.nes != null ? (
                             <span className={img.nes >= 0.8 ? "text-emerald-600" : img.nes >= 0.5 ? "text-amber-600" : "text-red-600"}>
                               {Number(img.nes).toFixed(3)}
                             </span>
-                          ) : "\u2014"}
+                          ) : rowIdx === 0 ? "\u2014" : ""}
                         </TableCell>
                       )}
                       {images.some((i) => i.cer != null) && (
                         <TableCell className="text-right font-mono text-xs text-slate-500">
-                          {img.cer != null ? Number(img.cer).toFixed(3) : "\u2014"}
+                          {rowIdx === 0 && img.cer != null ? Number(img.cer).toFixed(3) : rowIdx === 0 ? "\u2014" : ""}
                         </TableCell>
                       )}
                     </TableRow>
-                  );
+                  ));
                 })}
               </TableBody>
             </Table>

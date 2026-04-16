@@ -14,6 +14,53 @@ from pipeline.evaluator import call_model
 logger = logging.getLogger(__name__)
 
 
+def _parse_json_response(text: str, schema: dict[str, str]) -> list[dict]:
+    """Parse model response into a list of result dicts.
+
+    Accepts a JSON array, a single JSON object (wrapped into a list),
+    or extracts JSON from markdown code blocks. Returns a list with one
+    null-filled dict on parse failure.
+    """
+    # Strip markdown code fences
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+        cleaned = re.sub(r'\s*```\s*$', '', cleaned)
+
+    # Try direct parse
+    try:
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list):
+            return parsed if parsed else [{k: None for k in schema}]
+        if isinstance(parsed, dict):
+            return [parsed]
+    except json.JSONDecodeError:
+        pass
+
+    # Try to find a JSON array in the text
+    arr_match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+    if arr_match:
+        try:
+            parsed = json.loads(arr_match.group())
+            if isinstance(parsed, list):
+                return parsed if parsed else [{k: None for k in schema}]
+        except json.JSONDecodeError:
+            pass
+
+    # Fall back to finding individual JSON objects
+    objects = []
+    for m in re.finditer(r'\{[^{}]*\}', cleaned, re.DOTALL):
+        try:
+            objects.append(json.loads(m.group()))
+        except json.JSONDecodeError:
+            continue
+    if objects:
+        return objects
+
+    logger.warning(f"No JSON found in output: {text[:200]}")
+    return [{k: None for k in schema}]
+
+
 def _build_json_schema(extraction_schema: dict[str, str]) -> dict:
     """Convert extraction_schema {field: description} into a JSON Schema object."""
     properties = {}
@@ -84,10 +131,11 @@ class PipelineOrchestrator:
             f"- {k}: {v}" for k, v in schema.items()
         )
         prompt = (
-            f"Extract the following fields from this image and return ONLY valid JSON "
-            f"with these keys:\n{fields_desc}\n\n"
-            f"Return a JSON object with keys: {', '.join(schema.keys())}. "
-            f"No explanation, just the JSON."
+            f"Extract ALL observations from this image and return ONLY a valid JSON array. "
+            f"Each element should be an object with these keys:\n{fields_desc}\n\n"
+            f"If the image contains a table or list with multiple rows/entries, return one object per row. "
+            f"Return a JSON array of objects with keys: {', '.join(schema.keys())}. "
+            f"No explanation, just the JSON array."
         )
 
         # Look up model pricing for USD cost calculation
@@ -125,25 +173,13 @@ class PipelineOrchestrator:
                     provider_slug=provider_slug,
                     provider_base_url=provider_base_url,
                     config=model_config,
+                    max_tokens=4096,
                 )
                 total_input_tokens += in_tok
                 total_output_tokens += out_tok
 
-                # Parse JSON from response
-                try:
-                    predicted_result = json.loads(predicted_text)
-                except json.JSONDecodeError:
-                    # Try to extract JSON from markdown code block
-                    match = re.search(r'\{[^{}]*\}', predicted_text, re.DOTALL)
-                    if match:
-                        try:
-                            predicted_result = json.loads(match.group())
-                        except json.JSONDecodeError:
-                            logger.warning(f"Truncated output for {img['filename']}: {predicted_text[:200]}")
-                            predicted_result = {k: None for k in schema}
-                    else:
-                        logger.warning(f"No JSON in output for {img['filename']}: {predicted_text[:200]}")
-                        predicted_result = {k: None for k in schema}
+                # Parse JSON from response (expect array, but handle single objects)
+                predicted_result = _parse_json_response(predicted_text, schema)
 
                 self.storage.update_image(
                     img["id"],

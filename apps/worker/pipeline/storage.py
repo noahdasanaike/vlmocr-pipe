@@ -82,10 +82,10 @@ class StorageClient:
         def _do():
             conn = self._get_conn()
             try:
-                # JSON-encode dict values
+                # JSON-encode dict/list values
                 processed = {}
                 for k, v in kwargs.items():
-                    if isinstance(v, dict):
+                    if isinstance(v, (dict, list)):
                         processed[k] = json.dumps(v)
                     else:
                         processed[k] = v

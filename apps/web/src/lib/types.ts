@@ -70,7 +70,7 @@ export interface JobImage {
   filename: string;
   role: ImageRole;
   gemini_label: Record<string, string> | null;
-  predicted_result: Record<string, string> | null;
+  predicted_result: Record<string, string>[] | Record<string, string> | null;
   label_status: ImageLabelStatus;
   infer_status: ImageInferStatus;
   ground_truth: string | null;

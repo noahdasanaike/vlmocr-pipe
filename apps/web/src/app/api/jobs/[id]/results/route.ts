@@ -21,14 +21,16 @@ export async function GET(
 
   const results = images
     .filter((img) => img.predicted_result || img.gemini_label)
-    .map((img) => {
-      const predicted = img.predicted_result ? JSON.parse(img.predicted_result as string) : null;
+    .flatMap((img) => {
+      const raw = img.predicted_result ? JSON.parse(img.predicted_result as string) : null;
       const gemini = img.gemini_label ? JSON.parse(img.gemini_label as string) : null;
-      return {
+      const data = raw ?? gemini;
+      const rows: Record<string, unknown>[] = Array.isArray(data) ? data : data ? [data] : [{}];
+      return rows.map((row) => ({
         filename: img.filename,
         source: img.role === "label_source" ? "gemini" : "model",
-        ...(predicted ?? gemini ?? {}),
-      };
+        ...row,
+      }));
     });
 
   if (format === "csv") {

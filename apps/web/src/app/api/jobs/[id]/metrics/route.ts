@@ -83,7 +83,8 @@ export async function POST(
       if (gt === undefined) continue;
 
       const parsedResult = img.predicted_result ? JSON.parse(img.predicted_result) : {};
-      const pred = Object.values(parsedResult).join(" ");
+      const rows: Record<string, unknown>[] = Array.isArray(parsedResult) ? parsedResult : [parsedResult];
+      const pred = rows.map((r) => Object.values(r).join(" ")).join("\n");
 
       const nes = computeNes(pred, gt);
       const cer = computeCer(pred, gt);
