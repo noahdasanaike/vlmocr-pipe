@@ -14,6 +14,56 @@ from pipeline.evaluator import call_model
 logger = logging.getLogger(__name__)
 
 
+def _parse_markdown_table(text: str) -> tuple[list[str], list[dict]] | None:
+    """Try to parse a markdown table into (headers, rows).
+
+    Returns None if the text doesn't look like a markdown table.
+    """
+    cleaned = text.strip()
+    # Strip code fences
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r'^```(?:markdown)?\s*', '', cleaned)
+        cleaned = re.sub(r'\s*```\s*$', '', cleaned)
+
+    lines = [l.strip() for l in cleaned.split('\n') if l.strip()]
+    if len(lines) < 3:
+        return None
+
+    # Find header + separator pattern
+    header_idx = None
+    for i in range(len(lines) - 1):
+        if '|' in lines[i] and re.match(r'^[\s|:-]+$', lines[i + 1]):
+            header_idx = i
+            break
+    if header_idx is None:
+        return None
+
+    def split_row(line: str) -> list[str]:
+        line = line.strip().strip('|')
+        return [cell.strip() for cell in line.split('|')]
+
+    headers = split_row(lines[header_idx])
+    # Clean up bold markers from headers
+    headers = [re.sub(r'\*\*([^*]*)\*\*', r'\1', h).strip() for h in headers]
+
+    rows = []
+    for line in lines[header_idx + 2:]:
+        if not line or '|' not in line:
+            continue
+        if re.match(r'^[\s|:-]+$', line):
+            continue
+        cells = split_row(line)
+        row = {}
+        for j, header in enumerate(headers):
+            row[header] = cells[j].strip() if j < len(cells) else ""
+        rows.append(row)
+
+    if not rows:
+        return None
+
+    return headers, rows
+
+
 def _parse_json_response(text: str, schema: dict[str, str]) -> list[dict]:
     """Parse model response into a list of result dicts.
 
@@ -186,8 +236,38 @@ class PipelineOrchestrator:
 
                 # Parse response
                 if use_custom_prompt:
-                    # Custom prompt: store raw text output
-                    predicted_result = {"output": predicted_text.strip()}
+                    # Try to parse structured data from the response
+                    stripped = predicted_text.strip()
+
+                    # 1. Try markdown table
+                    table_result = _parse_markdown_table(stripped)
+                    if table_result:
+                        headers, rows = table_result
+                        predicted_result = rows
+                        # Update job schema to match detected columns (once)
+                        if inferred_count == 0:
+                            detected_schema = {h: h for h in headers}
+                            self.storage.update_job(job_id, extraction_schema=json.dumps(detected_schema))
+                            schema.clear()
+                            schema.update(detected_schema)
+                    else:
+                        # 2. Try JSON array/object
+                        try:
+                            parsed = json.loads(stripped)
+                            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                                predicted_result = parsed
+                                if inferred_count == 0:
+                                    detected_schema = {k: k for k in parsed[0].keys()}
+                                    self.storage.update_job(job_id, extraction_schema=json.dumps(detected_schema))
+                                    schema.clear()
+                                    schema.update(detected_schema)
+                            elif isinstance(parsed, dict):
+                                predicted_result = [parsed]
+                            else:
+                                predicted_result = {"output": stripped}
+                        except (json.JSONDecodeError, ValueError):
+                            # 3. Plain text fallback
+                            predicted_result = {"output": stripped}
                 else:
                     # Schema mode: parse JSON array
                     predicted_result = _parse_json_response(predicted_text, schema)
