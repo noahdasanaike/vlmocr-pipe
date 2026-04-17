@@ -53,6 +53,7 @@ export interface Job {
   eval_model_provider_slug: string | null;
   eval_model_provider_base_url: string | null;
   model_config: Record<string, string> | null;
+  custom_prompt: string | null;
   error_message: string | null;
   started_at: string | null;
   completed_at: string | null;

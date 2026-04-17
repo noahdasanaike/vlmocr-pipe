@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
     eval_model_provider_slug = null,
     eval_model_provider_base_url = null,
     model_config = {},
+    custom_prompt = null,
   } = body;
 
   const db = getDb();
@@ -62,8 +63,8 @@ export async function POST(req: NextRequest) {
       id, name, mode, labeling_model_id, finetune_model_id,
       label_ratio, extraction_schema, total_images, label_images, infer_images,
       eval_model_id, eval_model_api_id, eval_model_provider_slug, eval_model_provider_base_url,
-      model_config, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', datetime('now'), datetime('now'))
+      model_config, custom_prompt, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', datetime('now'), datetime('now'))
   `).run(
     jobId,
     name,
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
     eval_model_provider_slug || null,
     eval_model_provider_base_url || null,
     JSON.stringify(model_config || {}),
+    custom_prompt || null,
   );
 
   const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(jobId) as Record<string, unknown>;

@@ -117,6 +117,40 @@ export default function NewJobPage() {
   const [labelRatio, setLabelRatio] = useState(30);
   const [schema, setSchema] = useState<ExtractionSchema>({ name: "Person's full name" });
 
+  // Prompt mode: "schema" uses extraction schema, "preset" or "custom" uses custom_prompt
+  type PromptMode = "schema" | "preset" | "custom";
+  const [promptMode, setPromptMode] = useState<PromptMode>("schema");
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [selectedPreset, setSelectedPreset] = useState("");
+
+  const PROMPT_PRESETS: { id: string; label: string; prompt: string }[] = [
+    {
+      id: "transcribe_text",
+      label: "Transcribe Text",
+      prompt: "Transcribe all the text in this image exactly as written. Preserve the original formatting, line breaks, and spelling. Output ONLY the transcribed text, nothing else.",
+    },
+    {
+      id: "extract_table_markdown",
+      label: "Extract Table (Markdown)",
+      prompt: "OCR this document image into a markdown table. Transcribe all text exactly as written, preserving every row and column. Output ONLY the markdown table, nothing else.",
+    },
+    {
+      id: "extract_table_json",
+      label: "Extract Table (JSON)",
+      prompt: "Extract all rows from the table in this image. Return a JSON array where each element is an object with keys matching the column headers. Transcribe all text exactly as written. Output ONLY the JSON array, nothing else.",
+    },
+    {
+      id: "extract_handwriting",
+      label: "Transcribe Handwriting",
+      prompt: "Transcribe all handwritten text in this image exactly as written. If parts are unclear, give your best interpretation. Preserve line breaks and formatting. Output ONLY the transcribed text, nothing else.",
+    },
+    {
+      id: "describe_document",
+      label: "Describe Document",
+      prompt: "Describe what this document image contains. Include the document type, any headers or titles, the general layout, and a summary of the content. Be concise but thorough.",
+    },
+  ];
+
   // Model config overrides
   const [reasoningEffort, setReasoningEffort] = useState("low");
   const [mediaResolution, setMediaResolution] = useState("");
@@ -152,6 +186,10 @@ export default function NewJobPage() {
         }
         if (job.eval_model_id) {
           setSelectedEvalModel(job.eval_model_id);
+        }
+        if (job.custom_prompt) {
+          setCustomPrompt(job.custom_prompt);
+          setPromptMode("custom");
         }
       })
       .catch(() => { /* ignore */ });
@@ -432,10 +470,27 @@ export default function NewJobPage() {
   async function handleSubmit() {
     if (jobMode === "full" && (!selectedLabelModel || !selectedFinetuneModel)) return;
     if (jobMode === "inference_only" && !selectedEvalModel) return;
-    if (Object.keys(schema).length === 0) {
+
+    // Determine the prompt to send
+    let resolvedPrompt: string | null = null;
+    if (promptMode === "preset") {
+      const preset = PROMPT_PRESETS.find((p) => p.id === selectedPreset);
+      resolvedPrompt = preset?.prompt ?? null;
+    } else if (promptMode === "custom") {
+      resolvedPrompt = customPrompt.trim() || null;
+    }
+
+    if (!resolvedPrompt && promptMode !== "schema") {
+      toast.error("Enter a prompt or select a preset");
+      return;
+    }
+    if (promptMode === "schema" && Object.keys(schema).length === 0) {
       toast.error("Add at least one extraction field");
       return;
     }
+
+    // For prompt modes, set a minimal schema so results display works
+    const effectiveSchema = promptMode === "schema" ? schema : { output: "Raw model output" };
 
     setLoading(true);
     try {
@@ -445,7 +500,8 @@ export default function NewJobPage() {
         labeling_model_id: selectedLabelModel,
         finetune_model_id: selectedFinetuneModel,
         label_ratio: jobMode === "inference_only" ? 0 : labelRatio / 100,
-        extraction_schema: schema,
+        extraction_schema: effectiveSchema,
+        custom_prompt: resolvedPrompt,
         ...(jobMode === "inference_only" && selectedEvalModelObj && selectedEvalProvider ? {
           eval_model_id: selectedEvalModelObj.id,
           eval_model_api_id: selectedEvalModelObj.api_model_id,
@@ -455,7 +511,7 @@ export default function NewJobPage() {
         model_config: {
           ...(reasoningEffort !== "low" ? { reasoning_effort: reasoningEffort } : {}),
           ...(mediaResolution && mediaResolution !== "default" ? { media_resolution: mediaResolution } : {}),
-          ...(structuredOutput ? { structured_output: true } : {}),
+          ...(structuredOutput && promptMode === "schema" ? { structured_output: true } : {}),
         },
       };
 
@@ -510,11 +566,15 @@ export default function NewJobPage() {
           }
         }
 
-        await fetch(`/api/jobs/${job.id}/start`, {
+        const startRes = await fetch(`/api/jobs/${job.id}/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ files: allUploaded }),
         });
+        if (!startRes.ok) {
+          const startErr = await startRes.json().catch(() => ({}));
+          throw new Error(startErr.error || "Failed to start job");
+        }
       } else {
         // All cloud — use cloud-import API to download server-side
         toast.info("Server is downloading images from cloud URL...");
@@ -527,11 +587,15 @@ export default function NewJobPage() {
 
         if (!cloudRes.ok) throw new Error(cloudData.error);
 
-        await fetch(`/api/jobs/${job.id}/start`, {
+        const startRes2 = await fetch(`/api/jobs/${job.id}/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ files: cloudData.files }),
         });
+        if (!startRes2.ok) {
+          const startErr2 = await startRes2.json().catch(() => ({}));
+          throw new Error(startErr2.error || "Failed to start job");
+        }
       }
 
       toast.success("Job created and pipeline started!");
@@ -998,111 +1062,197 @@ export default function NewJobPage() {
             </div>
           )}
 
-          {/* Structured Outputs toggle — shown for providers that support it */}
-          {supportsStructuredOutput && (
-            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-              <div>
-                <p className="text-sm font-medium text-slate-700">Structured Outputs</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  Force model to return valid JSON matching your schema. Not all models support this.
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={structuredOutput}
-                onClick={() => setStructuredOutput(!structuredOutput)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${structuredOutput ? "bg-indigo-600" : "bg-slate-300"}`}
-              >
-                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${structuredOutput ? "translate-x-[18px]" : "translate-x-[2px]"}`} />
-              </button>
-            </div>
-          )}
-
-          <div className="border-t border-slate-100 pt-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium text-slate-700">Extraction Schema</Label>
-              <Button variant="outline" size="sm" onClick={addSchemaField} className="rounded-lg text-xs h-7">
-                <Plus className="mr-1 h-3 w-3" />
-                Add Field
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              <p className="text-xs text-slate-400 flex-1">
-                Define what data to extract from each document.
-              </p>
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs h-7 text-slate-500 hover:text-slate-700"
-                  onClick={() => {
-                    if (!showSchemaImport) {
-                      fetch("/api/jobs/schemas")
-                        .then((r) => r.json())
-                        .then((data) => {
-                          setPreviousSchemas(data ?? []);
-                          setShowSchemaImport(true);
-                        })
-                        .catch(() => {
-                          toast.error("Failed to load previous schemas");
-                        });
-                    } else {
-                      setShowSchemaImport(false);
-                    }
-                  }}
+          {/* Prompt Mode selector */}
+          <div className="border-t border-slate-100 pt-5 space-y-4">
+            <Label className="text-sm font-medium text-slate-700">Prompt</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { key: "schema" as PromptMode, label: "Extraction Schema", desc: "Define fields to extract as structured JSON" },
+                { key: "preset" as PromptMode, label: "Preset Prompt", desc: "Choose a pre-written prompt" },
+                { key: "custom" as PromptMode, label: "Custom Prompt", desc: "Write your own prompt" },
+              ]).map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setPromptMode(opt.key)}
+                  className={`rounded-lg border-2 p-3 text-left transition-colors ${
+                    promptMode === opt.key
+                      ? "border-slate-900 bg-slate-50"
+                      : "border-slate-200 hover:border-slate-300"
+                  }`}
                 >
-                  <Download className="mr-1 h-3 w-3" />
-                  Import from previous job
-                </Button>
-                {showSchemaImport && previousSchemas.length > 0 && (
-                  <div className="absolute right-0 top-8 z-50 w-64 rounded-lg border border-slate-200 bg-white shadow-lg py-1 max-h-48 overflow-y-auto">
-                    {previousSchemas.map((ps, idx) => (
-                      <button
-                        key={idx}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 transition-colors"
-                        onClick={() => {
-                          setSchema(ps.schema);
-                          setShowSchemaImport(false);
-                          toast.success(`Imported schema from "${ps.jobName}"`);
-                        }}
-                      >
-                        <span className="font-medium text-slate-700">{ps.jobName}</span>
-                        <span className="block text-slate-400 truncate">
-                          {Object.keys(ps.schema).join(", ")}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {showSchemaImport && previousSchemas.length === 0 && (
-                  <div className="absolute right-0 top-8 z-50 w-64 rounded-lg border border-slate-200 bg-white shadow-lg py-3 px-3">
-                    <p className="text-xs text-slate-400">No previous schemas found.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="space-y-2">
-              {Object.entries(schema).map(([key, desc], i) => (
-                <div key={i} className="flex gap-2">
-                  <Input
-                    placeholder="Field name"
-                    value={key}
-                    onChange={(e) => updateSchemaKey(key, e.target.value)}
-                    className="w-1/3 rounded-lg text-sm"
-                  />
-                  <Input
-                    placeholder="Description"
-                    value={desc}
-                    onChange={(e) => updateSchemaValue(key, e.target.value)}
-                    className="flex-1 rounded-lg text-sm"
-                  />
-                  <button onClick={() => removeSchemaField(key)} className="px-2">
-                    <X className="h-4 w-4 text-slate-400 hover:text-slate-600" />
-                  </button>
-                </div>
+                  <p className="text-xs font-medium text-slate-900">{opt.label}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{opt.desc}</p>
+                </button>
               ))}
             </div>
+
+            {/* Schema mode */}
+            {promptMode === "schema" && (
+              <div className="space-y-3">
+                {/* Structured Outputs toggle */}
+                {supportsStructuredOutput && (
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                    <div>
+                      <p className="text-xs font-medium text-slate-700">Structured Outputs</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Force model to return valid JSON matching your schema.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={structuredOutput}
+                      onClick={() => setStructuredOutput(!structuredOutput)}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${structuredOutput ? "bg-indigo-600" : "bg-slate-300"}`}
+                    >
+                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${structuredOutput ? "translate-x-[18px]" : "translate-x-[2px]"}`} />
+                    </button>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-slate-400">
+                    Define what data to extract from each document.
+                  </p>
+                  <div className="flex gap-2">
+                    <div className="relative">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7 text-slate-500 hover:text-slate-700"
+                        onClick={() => {
+                          if (!showSchemaImport) {
+                            fetch("/api/jobs/schemas")
+                              .then((r) => r.json())
+                              .then((data) => {
+                                setPreviousSchemas(data ?? []);
+                                setShowSchemaImport(true);
+                              })
+                              .catch(() => {
+                                toast.error("Failed to load previous schemas");
+                              });
+                          } else {
+                            setShowSchemaImport(false);
+                          }
+                        }}
+                      >
+                        <Download className="mr-1 h-3 w-3" />
+                        Import
+                      </Button>
+                      {showSchemaImport && previousSchemas.length > 0 && (
+                        <div className="absolute right-0 top-8 z-50 w-64 rounded-lg border border-slate-200 bg-white shadow-lg py-1 max-h-48 overflow-y-auto">
+                          {previousSchemas.map((ps, idx) => (
+                            <button
+                              key={idx}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 transition-colors"
+                              onClick={() => {
+                                setSchema(ps.schema);
+                                setShowSchemaImport(false);
+                                toast.success(`Imported schema from "${ps.jobName}"`);
+                              }}
+                            >
+                              <span className="font-medium text-slate-700">{ps.jobName}</span>
+                              <span className="block text-slate-400 truncate">
+                                {Object.keys(ps.schema).join(", ")}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {showSchemaImport && previousSchemas.length === 0 && (
+                        <div className="absolute right-0 top-8 z-50 w-64 rounded-lg border border-slate-200 bg-white shadow-lg py-3 px-3">
+                          <p className="text-xs text-slate-400">No previous schemas found.</p>
+                        </div>
+                      )}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={addSchemaField} className="rounded-lg text-xs h-7">
+                      <Plus className="mr-1 h-3 w-3" />
+                      Add Field
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {Object.entries(schema).map(([key, desc], i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input
+                        placeholder="Field name"
+                        value={key}
+                        onChange={(e) => updateSchemaKey(key, e.target.value)}
+                        className="w-1/3 rounded-lg text-sm"
+                      />
+                      <Input
+                        placeholder="Description"
+                        value={desc}
+                        onChange={(e) => updateSchemaValue(key, e.target.value)}
+                        className="flex-1 rounded-lg text-sm"
+                      />
+                      <button onClick={() => removeSchemaField(key)} className="px-2">
+                        <X className="h-4 w-4 text-slate-400 hover:text-slate-600" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Preset mode */}
+            {promptMode === "preset" && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  {PROMPT_PRESETS.map((preset) => (
+                    <label
+                      key={preset.id}
+                      className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+                        selectedPreset === preset.id
+                          ? "border-indigo-300 bg-indigo-50"
+                          : "border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="prompt_preset"
+                        checked={selectedPreset === preset.id}
+                        onChange={() => {
+                          setSelectedPreset(preset.id);
+                          setCustomPrompt(preset.prompt);
+                        }}
+                        className="accent-indigo-600 mt-0.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900">{preset.label}</p>
+                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{preset.prompt}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {selectedPreset && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-slate-500">Edit prompt (optional)</Label>
+                    <textarea
+                      value={customPrompt}
+                      onChange={(e) => setCustomPrompt(e.target.value)}
+                      rows={4}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-1 resize-y"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Custom mode */}
+            {promptMode === "custom" && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-slate-400">
+                  Write the exact prompt that will be sent with each image. The model&apos;s raw text output will be saved.
+                </p>
+                <textarea
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  placeholder="e.g., Transcribe all the text in this document exactly as written..."
+                  rows={5}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-1 resize-y"
+                />
+              </div>
+            )}
           </div>
 
           {/* Quick Compare — only when local files available */}
@@ -1364,10 +1514,18 @@ export default function NewJobPage() {
           )}
 
           <div className="border-t border-slate-100 pt-4">
-            <p className="text-xs text-slate-400 mb-2">Extraction Schema</p>
-            <pre className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700 overflow-auto">
-              {JSON.stringify(schema, null, 2)}
-            </pre>
+            <p className="text-xs text-slate-400 mb-2">
+              {promptMode === "schema" ? "Extraction Schema" : "Prompt"}
+            </p>
+            {promptMode === "schema" ? (
+              <pre className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700 overflow-auto">
+                {JSON.stringify(schema, null, 2)}
+              </pre>
+            ) : (
+              <pre className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700 overflow-auto whitespace-pre-wrap">
+                {promptMode === "preset" ? (customPrompt || PROMPT_PRESETS.find((p) => p.id === selectedPreset)?.prompt) : customPrompt}
+              </pre>
+            )}
           </div>
 
           {/* Cost estimation */}

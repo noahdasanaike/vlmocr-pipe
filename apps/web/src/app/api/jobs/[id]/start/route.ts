@@ -53,6 +53,35 @@ export async function POST(
       insertMany(uploadedFiles);
     }
 
+    // Pre-flight: check API key exists for the provider
+    if (job.mode === "inference_only" && job.eval_model_provider_slug) {
+      const slug = job.eval_model_provider_slug as string;
+      const envMap: Record<string, string> = {
+        openrouter: "OPENROUTER_API_KEY",
+        deepinfra: "DEEPINFRA_API_KEY",
+        novita: "NOVITA_API_KEY",
+        dashscope: "DASHSCOPE_API_KEY",
+        replicate: "REPLICATE_API_TOKEN",
+        google: "GEMINI_API_KEY",
+        qubrid: "QUBRID_API_KEY",
+        zenmux: "ZENMUX_API_KEY",
+      };
+      const envVar = envMap[slug] ?? `${slug.toUpperCase()}_API_KEY`;
+      const localProviders = ["ollama", "vllm"];
+      if (!localProviders.includes(slug)) {
+        const hasEnv = !!process.env[envVar];
+        const hasSetting = !!(
+          db.prepare("SELECT value FROM settings WHERE key = ?").get(envVar) as { value: string } | undefined
+        )?.value;
+        if (!hasEnv && !hasSetting) {
+          return NextResponse.json(
+            { error: `Missing API key: ${envVar}. Set it in Settings or as an environment variable.` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     // Count total images
     const totalImages = (
       db.prepare("SELECT COUNT(*) as cnt FROM images WHERE job_id = ?").get(id) as { cnt: number }

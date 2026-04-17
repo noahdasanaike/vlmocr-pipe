@@ -40,7 +40,8 @@ export async function GET(
       ["filename", "source", ...fields]
         .map((f) => {
           const val = String((r as Record<string, unknown>)[f] ?? "");
-          return val.includes(",") ? `"${val.replace(/"/g, '""')}"` : val;
+          return (val.includes(",") || val.includes("\n") || val.includes('"'))
+            ? `"${val.replace(/"/g, '""')}"` : val;
         })
         .join(",")
     );

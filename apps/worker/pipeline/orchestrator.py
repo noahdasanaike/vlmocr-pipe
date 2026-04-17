@@ -123,20 +123,26 @@ class PipelineOrchestrator:
             model_config = {**model_config, **job_config}
 
         # Build JSON Schema for structured output if enabled
-        if model_config.pop("structured_output", False):
+        custom_prompt = job.get("custom_prompt")
+        use_custom_prompt = bool(custom_prompt)
+
+        if not use_custom_prompt and model_config.pop("structured_output", False):
             model_config["json_schema"] = _build_json_schema(schema)
 
-        # Build extraction prompt from schema
-        fields_desc = "\n".join(
-            f"- {k}: {v}" for k, v in schema.items()
-        )
-        prompt = (
-            f"Extract ALL observations from this image and return ONLY a valid JSON array. "
-            f"Each element should be an object with these keys:\n{fields_desc}\n\n"
-            f"If the image contains a table or list with multiple rows/entries, return one object per row. "
-            f"Return a JSON array of objects with keys: {', '.join(schema.keys())}. "
-            f"No explanation, just the JSON array."
-        )
+        if use_custom_prompt:
+            prompt = custom_prompt
+        else:
+            # Build extraction prompt from schema
+            fields_desc = "\n".join(
+                f"- {k}: {v}" for k, v in schema.items()
+            )
+            prompt = (
+                f"Extract ALL observations from this image and return ONLY a valid JSON array. "
+                f"Each element should be an object with these keys:\n{fields_desc}\n\n"
+                f"If the image contains a table or list with multiple rows/entries, return one object per row. "
+                f"Return a JSON array of objects with keys: {', '.join(schema.keys())}. "
+                f"No explanation, just the JSON array."
+            )
 
         # Look up model pricing for USD cost calculation
         input_cost_per_1m = 0.0
@@ -178,8 +184,13 @@ class PipelineOrchestrator:
                 total_input_tokens += in_tok
                 total_output_tokens += out_tok
 
-                # Parse JSON from response (expect array, but handle single objects)
-                predicted_result = _parse_json_response(predicted_text, schema)
+                # Parse response
+                if use_custom_prompt:
+                    # Custom prompt: store raw text output
+                    predicted_result = {"output": predicted_text.strip()}
+                else:
+                    # Schema mode: parse JSON array
+                    predicted_result = _parse_json_response(predicted_text, schema)
 
                 self.storage.update_image(
                     img["id"],

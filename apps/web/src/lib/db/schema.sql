@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   eval_model_provider_slug TEXT,
   eval_model_provider_base_url TEXT,
   model_config TEXT NOT NULL DEFAULT '{}',
+  custom_prompt TEXT,
   error_message TEXT,
   started_at TEXT,
   completed_at TEXT,
