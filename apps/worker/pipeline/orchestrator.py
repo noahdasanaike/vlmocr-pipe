@@ -55,7 +55,10 @@ def _parse_markdown_table(text: str) -> tuple[list[str], list[dict]] | None:
         cells = split_row(line)
         row = {}
         for j, header in enumerate(headers):
-            row[header] = cells[j].strip() if j < len(cells) else ""
+            val = cells[j].strip() if j < len(cells) else ""
+            # Strip bold markers from cell values
+            val = re.sub(r'\*\*([^*]*)\*\*', r'\1', val).strip()
+            row[header] = val
         rows.append(row)
 
     if not rows:
