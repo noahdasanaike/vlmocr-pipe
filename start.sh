@@ -5,7 +5,15 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 bash "$SCRIPT_DIR/install.sh"
 
-PYTHON=$(command -v python3 || command -v python)
+# Find a Python that actually runs (skip the Windows Store stub on PATH).
+PYTHON=""
+for cand in python3 python; do
+  if command -v "$cand" >/dev/null 2>&1 && "$cand" -c "import sys" >/dev/null 2>&1; then
+    PYTHON="$cand"
+    break
+  fi
+done
+[ -n "$PYTHON" ] || { echo "Error: Python 3 is required."; exit 1; }
 
 echo ""
 echo "Starting services..."
