@@ -200,7 +200,13 @@ async def call_model(
     }
 
     # ── Provider-specific payload adjustments ────────────────────
-    api_key = _get_api_key(provider_slug)
+    # Skip the API-key requirement for Google when Vertex Flex is configured;
+    # Flex auths via service account instead, and many users on Flex won't
+    # have a GEMINI_API_KEY set at all.
+    if provider_slug == "google" and _vertex_settings() is not None:
+        api_key = ""
+    else:
+        api_key = _get_api_key(provider_slug)
     url = provider_base_url
 
     if provider_slug == "openrouter":
@@ -274,6 +280,23 @@ async def call_model(
 
     elif provider_slug == "google":
         media_resolution = config.get("media_resolution")
+
+        # Vertex Flex takes priority when configured: billing flips from a
+        # personal API key to the project's shared capacity.
+        vertex = _vertex_settings()
+        if vertex is not None:
+            return await _call_google_vertex_flex(
+                model_api_id=model_api_id,
+                image_bytes=image_bytes,
+                filename=filename,
+                prompt=prompt,
+                settings=vertex,
+                media_resolution=media_resolution,
+                json_schema=json_schema,
+                reasoning_effort=reasoning_effort,
+                max_tokens=max_tokens,
+                retries=retries,
+            )
 
         # If media_resolution is requested, use the native Gemini API instead
         # of the OpenAI-compatible endpoint (media_resolution is not supported
@@ -447,6 +470,210 @@ async def _call_replicate(
             raise
     # Should not reach here
     raise RuntimeError("Replicate retries exhausted")
+
+
+# ── Google Vertex Flex (DDI shared capacity, service-account auth) ──────
+
+# Cached (token, expiry_ts) per service-account JSON to avoid re-signing JWTs
+# on every call. Keyed by a short hash of the JSON content.
+_vertex_token_cache: dict[str, tuple[str, float]] = {}
+_vertex_token_lock = asyncio.Lock()
+
+
+def _vertex_settings() -> dict | None:
+    """Return Vertex Flex settings if enabled and complete, else None.
+
+    Reads from env vars first, then the DB settings table. Returns None
+    unless GOOGLE_USE_VERTEX_FLEX is truthy AND all three of project,
+    location, and service-account JSON are populated.
+    """
+    def _read(key: str) -> str:
+        v = os.environ.get(key, "")
+        if v:
+            return v
+        try:
+            from pipeline.storage import StorageClient
+            return StorageClient().get_setting(key) or ""
+        except Exception:
+            return ""
+
+    flag = _read("GOOGLE_USE_VERTEX_FLEX").strip().lower()
+    if flag not in ("1", "true", "yes", "on"):
+        return None
+    project = _read("GOOGLE_VERTEX_PROJECT").strip()
+    location = _read("GOOGLE_VERTEX_LOCATION").strip() or "global"
+    sa_json = _read("GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON").strip()
+    if not project or not sa_json:
+        return None
+    return {"project": project, "location": location, "sa_json": sa_json}
+
+
+async def _vertex_access_token(sa_json: str) -> str:
+    """Mint (or reuse a cached) OAuth access token from the service-account JSON."""
+    import hashlib
+    key = hashlib.sha256(sa_json.encode("utf-8")).hexdigest()[:16]
+    now = time.time()
+
+    async with _vertex_token_lock:
+        cached = _vertex_token_cache.get(key)
+        if cached and cached[1] - now > 60:
+            return cached[0]
+
+        try:
+            from google.oauth2 import service_account
+            from google.auth.transport.requests import Request
+        except ImportError as e:
+            raise RuntimeError(
+                "google-auth is required for Vertex Flex. "
+                "Run: pip install -r apps/worker/requirements.txt"
+            ) from e
+
+        info = json.loads(sa_json)
+        creds = service_account.Credentials.from_service_account_info(
+            info, scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        # google-auth refresh is sync; run in a thread so we don't block the loop.
+        await asyncio.to_thread(creds.refresh, Request())
+        token = creds.token
+        expiry = creds.expiry.timestamp() if creds.expiry else now + 3300
+        _vertex_token_cache[key] = (token, expiry)
+        return token
+
+
+def _vertex_endpoint(project: str, location: str, model: str) -> str:
+    """Build the Vertex Aiplatform endpoint URL for a model.
+
+    location="global" uses aiplatform.googleapis.com directly; other regions
+    use a regional subdomain (e.g. us-central1-aiplatform.googleapis.com).
+    """
+    host = "aiplatform.googleapis.com" if location == "global" else f"{location}-aiplatform.googleapis.com"
+    return (
+        f"https://{host}/v1/projects/{project}/locations/{location}"
+        f"/publishers/google/models/{model}:generateContent"
+    )
+
+
+async def _call_google_vertex_flex(
+    model_api_id: str,
+    image_bytes: bytes,
+    filename: str,
+    prompt: str,
+    settings: dict,
+    media_resolution: str | None = None,
+    json_schema: dict | None = None,
+    reasoning_effort: str | None = None,
+    max_tokens: int = 512,
+    retries: int = 5,
+) -> tuple[str, float, int, int]:
+    """Call Gemini via Vertex AI flex shared capacity.
+
+    Same response shape as _call_google_native (text, latency, in_tok, out_tok).
+    The flex header bills against the project's shared capacity instead of
+    pay-per-call. Falls back gracefully on auth errors by raising.
+    """
+    b64 = base64.b64encode(image_bytes).decode("utf-8")
+    mime = _get_mime_type(filename)
+
+    parts = [
+        {"inline_data": {"mime_type": mime, "data": b64}},
+        {"text": prompt},
+    ]
+
+    gen_config: dict = {"maxOutputTokens": max_tokens}
+
+    if media_resolution:
+        resolution = MEDIA_RESOLUTIONS.get(media_resolution, media_resolution)
+        if resolution not in MEDIA_RESOLUTIONS.values():
+            resolution = "MEDIA_RESOLUTION_HIGH"
+        gen_config["mediaResolution"] = resolution
+
+    if reasoning_effort:
+        is_gemini3 = "gemini-3" in model_api_id
+        thinking_config: dict = {}
+        if is_gemini3:
+            level_map = {"minimal": "minimal", "low": "low", "medium": "medium", "high": "high"}
+            thinking_config["thinkingLevel"] = level_map.get(reasoning_effort, "low")
+        else:
+            budget_map = {"minimal": 1024, "low": 1024, "medium": 8192, "high": 24576}
+            thinking_config["thinkingBudget"] = budget_map.get(reasoning_effort, 1024)
+        gen_config["thinkingConfig"] = thinking_config
+
+    if json_schema:
+        gen_config["responseMimeType"] = "application/json"
+        gen_config["responseJsonSchema"] = json_schema
+
+    payload = {"contents": [{"parts": parts}], "generationConfig": gen_config}
+    url = _vertex_endpoint(settings["project"], settings["location"], model_api_id)
+
+    sem = _get_semaphore("google")
+    async with sem:
+        t0 = time.time()
+        last_exc: Exception | None = None
+        for attempt in range(retries):
+            try:
+                token = await _vertex_access_token(settings["sa_json"])
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "X-Vertex-AI-LLM-Shared-Request-Type": "flex",
+                }
+                async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as http:
+                    resp = await http.post(url, headers=headers, json=payload)
+
+                if resp.status_code in (429, 500, 502, 503) and attempt < retries - 1:
+                    wait = min(10 * (2 ** attempt), 120)
+                    logger.warning(f"[{resp.status_code}] vertex flex retry in {wait}s for {model_api_id}")
+                    await asyncio.sleep(wait)
+                    continue
+
+                resp.raise_for_status()
+                break
+
+            except httpx.ReadTimeout as e:
+                last_exc = e
+                if attempt < retries - 1:
+                    wait = min(10 * (2 ** attempt), 120)
+                    logger.warning(f"Timeout, vertex flex retry in {wait}s for {model_api_id}")
+                    await asyncio.sleep(wait)
+                    continue
+                raise
+            except httpx.HTTPStatusError as e:
+                # 401: probably token expired between mint and call; force refresh.
+                if e.response.status_code == 401 and attempt < retries - 1:
+                    import hashlib
+                    key = hashlib.sha256(settings["sa_json"].encode("utf-8")).hexdigest()[:16]
+                    _vertex_token_cache.pop(key, None)
+                    continue
+                raise
+
+        if last_exc and 'resp' not in dir():
+            raise last_exc
+
+        elapsed = time.time() - t0
+        data = resp.json()
+
+        if "error" in data:
+            raise RuntimeError(data["error"].get("message", str(data["error"])))
+
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise RuntimeError(f"No candidates in Vertex Flex response: {json.dumps(data)[:300]}")
+
+        out_parts = candidates[0].get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in out_parts).strip()
+
+        finish_reason = candidates[0].get("finishReason", "")
+        if finish_reason == "MAX_TOKENS":
+            logger.warning(
+                f"Model {model_api_id} output truncated (vertex flex, finishReason=MAX_TOKENS). "
+                f"Last 100 chars: ...{text[-100:]}"
+            )
+
+        usage_meta = data.get("usageMetadata", {})
+        input_tokens = usage_meta.get("promptTokenCount", 0)
+        output_tokens = usage_meta.get("candidatesTokenCount", 0)
+
+        return text, elapsed, input_tokens, output_tokens
 
 
 # ── Google native Gemini API (for media_resolution + structured output) ──
