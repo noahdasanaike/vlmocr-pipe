@@ -48,6 +48,28 @@ start.bat
 
 This installs dependencies, creates data directories, and starts both services. Open [http://localhost:3000](http://localhost:3000).
 
+### Install / uninstall / reinstall
+
+`start.sh` / `start.bat` runs install automatically, so most people never need these directly. They're useful when something breaks (e.g. you upgraded Node and `better-sqlite3` no longer loads):
+
+```bash
+# Linux / macOS
+./install.sh         # deps + native module rebuild + DB init (idempotent)
+./uninstall.sh       # remove node_modules / lockfile / .next (keeps your data)
+./uninstall.sh --purge -y   # also delete the SQLite DB + uploads, skip prompt
+
+# Windows
+install.bat
+uninstall.bat
+uninstall.bat --purge -y
+```
+
+A clean reinstall after a Node upgrade:
+
+```bash
+./uninstall.sh --purge -y && ./install.sh && ./start.sh
+```
+
 ### Manual start
 
 If you prefer to start services separately:
