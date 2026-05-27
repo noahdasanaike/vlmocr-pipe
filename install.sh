@@ -6,9 +6,17 @@ echo ""
 
 # Check prerequisites
 command -v node >/dev/null 2>&1 || { echo "Error: Node.js is required. Install from https://nodejs.org"; exit 1; }
-command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1 || { echo "Error: Python 3 is required."; exit 1; }
 
-PYTHON=$(command -v python3 || command -v python)
+# Find a Python that actually works (skip the Windows Store stub, which is
+# on PATH but exits non-zero without doing anything).
+PYTHON=""
+for cand in python3 python; do
+  if command -v "$cand" >/dev/null 2>&1 && "$cand" -c "import sys" >/dev/null 2>&1; then
+    PYTHON="$cand"
+    break
+  fi
+done
+[ -n "$PYTHON" ] || { echo "Error: Python 3 is required."; exit 1; }
 
 # Install web dependencies
 echo "[1/3] Installing web dependencies..."
@@ -57,9 +65,22 @@ node -e "
   fs.mkdirSync(path.join('data', 'storage'), { recursive: true });
   const db = new Database(path.join('data', 'ocr.db'));
   db.exec(fs.readFileSync(path.join('src','lib','db','schema.sql'), 'utf-8'));
+  // Mirror runtime migrations in src/lib/db/index.ts so old DBs gain columns
+  // that seed.sql references. Each ALTER is idempotent via try/catch.
+  const migrations = [
+    \"ALTER TABLE jobs ADD COLUMN model_config TEXT NOT NULL DEFAULT '{}'\",
+    'ALTER TABLE jobs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE jobs ADD COLUMN total_input_tokens INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE jobs ADD COLUMN total_output_tokens INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE jobs ADD COLUMN total_cost REAL NOT NULL DEFAULT 0',
+    'ALTER TABLE eval_models ADD COLUMN input_cost_per_1m REAL NOT NULL DEFAULT 0',
+    'ALTER TABLE eval_models ADD COLUMN output_cost_per_1m REAL NOT NULL DEFAULT 0',
+    'ALTER TABLE eval_models ADD COLUMN tokens_per_image INTEGER NOT NULL DEFAULT 1000',
+  ];
+  for (const m of migrations) { try { db.exec(m); } catch (_) { /* column exists */ } }
   db.exec(fs.readFileSync(path.join('src','lib','db','seed.sql'), 'utf-8'));
   db.close();
-" 2>/dev/null || echo "      Warning: schema init failed; web app will retry on first request."
+" || echo "      Warning: schema init failed; web app will retry on first request."
 cd ../..
 
 echo ""

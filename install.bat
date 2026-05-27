@@ -47,7 +47,7 @@ if not exist "apps\web\data\storage" mkdir "apps\web\data\storage"
 :: and open an empty DB ("no such table: jobs"). Idempotent.
 echo [3/3] Initializing database...
 cd apps\web
-node -e "const Database=require('better-sqlite3');const fs=require('fs');const path=require('path');fs.mkdirSync(path.join('data','storage'),{recursive:true});const db=new Database(path.join('data','ocr.db'));db.exec(fs.readFileSync(path.join('src','lib','db','schema.sql'),'utf-8'));db.exec(fs.readFileSync(path.join('src','lib','db','seed.sql'),'utf-8'));db.close();" 2>nul
+node -e "const Database=require('better-sqlite3');const fs=require('fs');const path=require('path');fs.mkdirSync(path.join('data','storage'),{recursive:true});const db=new Database(path.join('data','ocr.db'));db.exec(fs.readFileSync(path.join('src','lib','db','schema.sql'),'utf-8'));const migrations=[\"ALTER TABLE jobs ADD COLUMN model_config TEXT NOT NULL DEFAULT '{}'\",'ALTER TABLE jobs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0','ALTER TABLE jobs ADD COLUMN total_input_tokens INTEGER NOT NULL DEFAULT 0','ALTER TABLE jobs ADD COLUMN total_output_tokens INTEGER NOT NULL DEFAULT 0','ALTER TABLE jobs ADD COLUMN total_cost REAL NOT NULL DEFAULT 0','ALTER TABLE eval_models ADD COLUMN input_cost_per_1m REAL NOT NULL DEFAULT 0','ALTER TABLE eval_models ADD COLUMN output_cost_per_1m REAL NOT NULL DEFAULT 0','ALTER TABLE eval_models ADD COLUMN tokens_per_image INTEGER NOT NULL DEFAULT 1000'];for(const m of migrations){try{db.exec(m);}catch(_){}}db.exec(fs.readFileSync(path.join('src','lib','db','seed.sql'),'utf-8'));db.close();"
 if errorlevel 1 echo       Warning: schema init failed; web app will retry on first request.
 cd ..\..
 
