@@ -12,9 +12,14 @@ export async function GET() {
     // Mask sensitive values — only show first/last 4 chars
     const masked: Record<string, string> = {};
     for (const [k, v] of Object.entries(settings)) {
-      masked[k] = k.toLowerCase().includes("key") || k.toLowerCase().includes("token") || k.toLowerCase().includes("secret")
-        ? maskKey(v)
-        : v;
+      const lk = k.toLowerCase();
+      const sensitive =
+        lk.includes("key") ||
+        lk.includes("token") ||
+        lk.includes("secret") ||
+        lk.includes("service_account") ||
+        lk.includes("credentials");
+      masked[k] = sensitive ? maskKey(v) : v;
     }
     return NextResponse.json(masked);
   } catch (err) {

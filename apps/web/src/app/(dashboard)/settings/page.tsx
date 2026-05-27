@@ -5,8 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArtFooter } from "@/components/art-footer";
-import { Key, Check, X, Eye, EyeOff, Loader2, CircleDot, Zap, AlertTriangle } from "lucide-react";
+import { Key, Check, X, Eye, EyeOff, Loader2, CircleDot, Zap, AlertTriangle, Cloud } from "lucide-react";
 import { toast } from "sonner";
+
+const VERTEX_KEYS = {
+  enabled: "GOOGLE_USE_VERTEX_FLEX",
+  project: "GOOGLE_VERTEX_PROJECT",
+  location: "GOOGLE_VERTEX_LOCATION",
+  saJson: "GOOGLE_VERTEX_SERVICE_ACCOUNT_JSON",
+} as const;
 
 interface ProviderConfig {
   name: string;
@@ -98,12 +105,25 @@ export default function SettingsPage() {
   const [testResults, setTestResults] = useState<Record<string, "ok" | "fail">>({});
   const [workerAlive, setWorkerAlive] = useState<boolean | null>(null);
 
+  // Vertex Flex
+  const [vertexProject, setVertexProject] = useState("");
+  const [vertexLocation, setVertexLocation] = useState("");
+  const [vertexSaJson, setVertexSaJson] = useState("");
+  const [vertexEnabled, setVertexEnabled] = useState(false);
+  const [vertexSaving, setVertexSaving] = useState(false);
+  const [vertexJsonVisible, setVertexJsonVisible] = useState(false);
+
   const fetchSettings = useCallback(async () => {
     try {
       const res = await fetch("/api/settings");
       if (res.ok) {
         const data = await res.json();
         setSettings(data);
+        // Project + location are not sensitive; show them. JSON is masked
+        // server-side, so we only know whether it's set — not its contents.
+        setVertexProject(data[VERTEX_KEYS.project] ?? "");
+        setVertexLocation(data[VERTEX_KEYS.location] ?? "");
+        setVertexEnabled((data[VERTEX_KEYS.enabled] ?? "") === "1");
       }
     } catch {
       // API unavailable
@@ -207,6 +227,54 @@ export default function SettingsPage() {
       toast.error(`${provider.name}: test failed`);
     } finally {
       setTesting((prev) => ({ ...prev, [provider.settingKey]: false }));
+    }
+  }
+
+  async function saveVertex() {
+    if (vertexEnabled) {
+      if (!vertexProject.trim()) {
+        toast.error("Project ID is required when Flex is enabled");
+        return;
+      }
+      // SA JSON is masked once saved, so an empty input on an already-set
+      // key means "keep existing"; only block if neither is present.
+      if (!vertexSaJson.trim() && !settings[VERTEX_KEYS.saJson]) {
+        toast.error("Service account JSON is required when Flex is enabled");
+        return;
+      }
+    }
+    setVertexSaving(true);
+    try {
+      const writes: [string, string][] = [
+        [VERTEX_KEYS.enabled, vertexEnabled ? "1" : "0"],
+        [VERTEX_KEYS.project, vertexProject.trim()],
+        [VERTEX_KEYS.location, vertexLocation.trim() || "global"],
+      ];
+      if (vertexSaJson.trim()) {
+        try {
+          JSON.parse(vertexSaJson);
+        } catch {
+          toast.error("Service account JSON is not valid JSON");
+          setVertexSaving(false);
+          return;
+        }
+        writes.push([VERTEX_KEYS.saJson, vertexSaJson.trim()]);
+      }
+      for (const [k, v] of writes) {
+        const res = await fetch("/api/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: k, value: v }),
+        });
+        if (!res.ok) throw new Error(`save ${k} failed`);
+      }
+      toast.success(vertexEnabled ? "Vertex Flex saved (Gemini calls will use Flex)" : "Vertex Flex saved");
+      setVertexSaJson("");
+      fetchSettings();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setVertexSaving(false);
     }
   }
 
@@ -440,6 +508,111 @@ export default function SettingsPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* Vertex Flex (alternative auth for Google) */}
+      <div className="rounded-xl bg-white p-5 shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <Cloud className="h-4 w-4 text-slate-500" />
+            <h2 className="text-sm font-semibold text-slate-900">
+              Google Vertex AI (Flex)
+            </h2>
+            <span className="text-[10px] text-slate-400 font-medium">advanced</span>
+            {vertexEnabled && settings[VERTEX_KEYS.project] && settings[VERTEX_KEYS.saJson] ? (
+              <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                <Check className="h-3 w-3" />
+                Active
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-400">
+                <X className="h-3 w-3" />
+                Off
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-500 mb-4">
+          Route Gemini calls through your project&apos;s shared Flex capacity instead of the personal Google AI Studio API key.
+          When active, this takes priority over <code className="bg-slate-100 px-1 py-0.5 rounded">GEMINI_API_KEY</code> for all Gemini models.
+          Requires a service-account JSON with <code className="bg-slate-100 px-1 py-0.5 rounded">aiplatform.user</code> on the project.
+        </p>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="vertex-project" className="text-xs text-slate-600">Project ID</Label>
+              <Input
+                id="vertex-project"
+                placeholder="my-gcp-project"
+                value={vertexProject}
+                onChange={(e) => setVertexProject(e.target.value)}
+                className="text-sm mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="vertex-location" className="text-xs text-slate-600">Location</Label>
+              <Input
+                id="vertex-location"
+                placeholder="global"
+                value={vertexLocation}
+                onChange={(e) => setVertexLocation(e.target.value)}
+                className="text-sm mt-1"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label htmlFor="vertex-sa" className="text-xs text-slate-600">
+                Service Account JSON
+                {settings[VERTEX_KEYS.saJson] && (
+                  <span className="ml-2 text-[11px] text-emerald-600 font-medium">(saved — leave blank to keep)</span>
+                )}
+              </Label>
+              {vertexSaJson && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setVertexJsonVisible((v) => !v)}
+                  className="h-6 px-2 text-xs text-slate-400"
+                >
+                  {vertexJsonVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                </Button>
+              )}
+            </div>
+            <textarea
+              id="vertex-sa"
+              placeholder={settings[VERTEX_KEYS.saJson] ? "{...} (saved — paste a new key to replace)" : '{\n  "type": "service_account",\n  "project_id": "...",\n  ...\n}'}
+              value={vertexSaJson}
+              onChange={(e) => setVertexSaJson(e.target.value)}
+              rows={6}
+              className={`w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-mono ${vertexJsonVisible ? "" : "[-webkit-text-security:disc] [text-security:disc]"} focus:border-slate-400 focus:outline-none`}
+            />
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={vertexEnabled}
+                onChange={(e) => setVertexEnabled(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              Use Vertex Flex for Gemini calls
+            </label>
+            <Button
+              size="sm"
+              onClick={saveVertex}
+              disabled={vertexSaving}
+              className="shrink-0"
+            >
+              {vertexSaving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              Save
+            </Button>
+          </div>
+        </div>
       </div>
 
       <ArtFooter page="settings" />
