@@ -602,7 +602,12 @@ async def _call_google_vertex_flex(
         gen_config["responseMimeType"] = "application/json"
         gen_config["responseJsonSchema"] = json_schema
 
-    payload = {"contents": [{"parts": parts}], "generationConfig": gen_config}
+    # Vertex's aiplatform.googleapis.com requires an explicit role on each
+    # content entry, unlike the lenient generativelanguage.googleapis.com.
+    payload = {
+        "contents": [{"role": "user", "parts": parts}],
+        "generationConfig": gen_config,
+    }
     url = _vertex_endpoint(settings["project"], settings["location"], model_api_id)
 
     sem = _get_semaphore("google")
@@ -626,7 +631,12 @@ async def _call_google_vertex_flex(
                     await asyncio.sleep(wait)
                     continue
 
-                resp.raise_for_status()
+                if not resp.is_success:
+                    # Surface the actual server message — Vertex 4xx bodies
+                    # are JSON with diagnostic text we'd otherwise hide.
+                    raise RuntimeError(
+                        f"Vertex Flex {resp.status_code}: {resp.text[:500]}"
+                    )
                 break
 
             except httpx.ReadTimeout as e:
@@ -635,14 +645,6 @@ async def _call_google_vertex_flex(
                     wait = min(10 * (2 ** attempt), 120)
                     logger.warning(f"Timeout, vertex flex retry in {wait}s for {model_api_id}")
                     await asyncio.sleep(wait)
-                    continue
-                raise
-            except httpx.HTTPStatusError as e:
-                # 401: probably token expired between mint and call; force refresh.
-                if e.response.status_code == 401 and attempt < retries - 1:
-                    import hashlib
-                    key = hashlib.sha256(settings["sa_json"].encode("utf-8")).hexdigest()[:16]
-                    _vertex_token_cache.pop(key, None)
                     continue
                 raise
 
