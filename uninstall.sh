@@ -7,6 +7,7 @@ echo "This will remove:"
 echo "  - apps/web/node_modules"
 echo "  - apps/web/package-lock.json"
 echo "  - apps/web/.next"
+echo "  - apps/worker/.venv  (Python virtualenv)"
 echo ""
 echo "Your data (SQLite DB + uploaded files in apps/web/data/) is preserved"
 echo "by default. Pass --purge to also delete it."
@@ -32,6 +33,9 @@ rm -rf apps/web/node_modules
 rm -f  apps/web/package-lock.json
 rm -rf apps/web/.next
 echo "Removed web build artifacts."
+
+rm -rf apps/worker/.venv
+echo "Removed apps/worker/.venv (Python virtualenv)."
 
 if [ "$PURGE" = "1" ]; then
   rm -rf apps/web/data
