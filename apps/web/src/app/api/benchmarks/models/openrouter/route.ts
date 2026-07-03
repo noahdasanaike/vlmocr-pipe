@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { db as dbHelper } from "@/lib/db";
 
+interface ORModel {
+  id: string;
+  name?: string;
+  context_length?: number | null;
+  pricing?: { prompt?: string; completion?: string };
+  architecture?: { input_modalities?: string[]; modality?: string };
+}
+
 /**
  * Live OpenRouter catalog, filtered to vision-capable models and normalized
  * to the shape eval_models wants (USD per 1M tokens). The /models endpoint is
@@ -23,9 +31,9 @@ export async function GET() {
       );
     }
 
-    const data = await res.json();
+    const data = (await res.json()) as { data?: ORModel[] };
     const models = (data.data ?? [])
-      .filter((m: Record<string, any>) => {
+      .filter((m: ORModel) => {
         const arch = m.architecture ?? {};
         const mods: string[] = arch.input_modalities ?? [];
         const modality: string = arch.modality ?? "";
@@ -34,7 +42,7 @@ export async function GET() {
           String(modality).includes("image")
         );
       })
-      .map((m: Record<string, any>) => {
+      .map((m: ORModel) => {
         const prompt = parseFloat(m.pricing?.prompt ?? "0") * 1_000_000;
         const completion = parseFloat(m.pricing?.completion ?? "0") * 1_000_000;
         return {

@@ -76,7 +76,7 @@ export function OpenRouterModels() {
     // rather than the server's provider flag (which keys off a different name).
     fetch("/api/settings")
       .then((r) => (r.ok ? r.json() : {}))
-      .then((s) => setHasKey(!!s?.OPENROUTER_API_KEY))
+      .then((s: Record<string, string>) => setHasKey(!!s?.OPENROUTER_API_KEY))
       .catch(() => setHasKey(null));
   }, [refreshModels]);
 

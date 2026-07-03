@@ -13,12 +13,31 @@ export async function GET() {
     if (m.config) m.config = JSON.parse(m.config as string);
   }
 
-  // Check which providers have API keys configured
+  // Check which providers have API keys configured. The setting name per
+  // provider must match the worker's evaluator (_get_api_key) and the Settings
+  // UI — not a lowercased `${slug}_api_key` guess (which misses GEMINI_API_KEY,
+  // REPLICATE_API_TOKEN, and the correct casing entirely).
+  const KEY_BY_SLUG: Record<string, string> = {
+    openrouter: "OPENROUTER_API_KEY",
+    deepinfra: "DEEPINFRA_API_KEY",
+    novita: "NOVITA_API_KEY",
+    dashscope: "DASHSCOPE_API_KEY",
+    replicate: "REPLICATE_API_TOKEN",
+    google: "GEMINI_API_KEY",
+    qubrid: "QUBRID_API_KEY",
+    zenmux: "ZENMUX_API_KEY",
+    ollama: "OLLAMA_API_KEY",
+    vllm: "VLLM_API_KEY",
+  };
   for (const p of providers) {
     const slug = p.slug as string;
-    const settingKey = `${slug}_api_key`;
-    const hasKey = !!(dbHelper.getSetting(settingKey) || process.env[`${slug.toUpperCase()}_API_KEY`]);
-    p.has_api_key = hasKey;
+    // Local providers don't need a key to be usable.
+    if (slug === "ollama" || slug === "vllm") {
+      p.has_api_key = true;
+      continue;
+    }
+    const settingKey = KEY_BY_SLUG[slug] ?? `${slug.toUpperCase()}_API_KEY`;
+    p.has_api_key = !!(dbHelper.getSetting(settingKey) || process.env[settingKey]);
   }
 
   return NextResponse.json({ models, providers });
