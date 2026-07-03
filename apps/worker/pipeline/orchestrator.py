@@ -182,6 +182,14 @@ class PipelineOrchestrator:
         if not use_custom_prompt and model_config.pop("structured_output", False):
             model_config["json_schema"] = _build_json_schema(schema)
 
+        # Row-explosion is opt-in (set only by the explicit table-extraction
+        # presets). Off by default so that a transcribed page containing a
+        # table stays as text in a single cell instead of fanning out into one
+        # array-row per table row — rows that get keyed by the table's own
+        # column headers, don't match the job schema, and render as blank rows
+        # in the CSV. See the custom-prompt parsing branch below.
+        expand_rows = bool(model_config.pop("expand_rows", False))
+
         if use_custom_prompt:
             prompt = custom_prompt
         else:
@@ -239,24 +247,28 @@ class PipelineOrchestrator:
 
                 # Parse response
                 if use_custom_prompt:
-                    # Try to parse structured data from the response
                     stripped = predicted_text.strip()
+                    predicted_result = None
 
-                    # 1. Try markdown table
-                    table_result = _parse_markdown_table(stripped)
-                    if table_result:
-                        headers, rows = table_result
-                        predicted_result = rows
-                        # Update job schema to match detected columns (once)
-                        if inferred_count == 0:
-                            detected_schema = {h: h for h in headers}
-                            self.storage.update_job(job_id, extraction_schema=json.dumps(detected_schema))
-                            schema.clear()
-                            schema.update(detected_schema)
-                    else:
-                        # 2. Try JSON array/object
-                        try:
-                            parsed = json.loads(stripped)
+                    if expand_rows:
+                        # Explicit table-extraction intent: fan the page out
+                        # into one row per table row / array element, and (on
+                        # the first page) adopt the detected columns as the
+                        # job schema.
+                        table_result = _parse_markdown_table(stripped)
+                        if table_result:
+                            headers, rows = table_result
+                            predicted_result = rows
+                            if inferred_count == 0:
+                                detected_schema = {h: h for h in headers}
+                                self.storage.update_job(job_id, extraction_schema=json.dumps(detected_schema))
+                                schema.clear()
+                                schema.update(detected_schema)
+                        else:
+                            try:
+                                parsed = json.loads(stripped)
+                            except (json.JSONDecodeError, ValueError):
+                                parsed = None
                             if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
                                 predicted_result = parsed
                                 if inferred_count == 0:
@@ -266,11 +278,14 @@ class PipelineOrchestrator:
                                     schema.update(detected_schema)
                             elif isinstance(parsed, dict):
                                 predicted_result = [parsed]
-                            else:
-                                predicted_result = {"output": stripped}
-                        except (json.JSONDecodeError, ValueError):
-                            # 3. Plain text fallback
-                            predicted_result = {"output": stripped}
+
+                    # Default (and fallback): keep the whole page — including
+                    # any table, rendered as markdown — as text in a single
+                    # "output" cell. A tabular page transcribed under a plain
+                    # "transcribe" prompt should stay in one cell, not fan out
+                    # into blank rows.
+                    if predicted_result is None:
+                        predicted_result = {"output": stripped}
                 else:
                     # Schema mode: parse JSON array
                     predicted_result = _parse_json_response(predicted_text, schema)

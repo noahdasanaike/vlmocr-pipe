@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArtFooter } from "@/components/art-footer";
+import { OpenRouterModels } from "@/components/openrouter-models";
 import { Key, Check, X, Eye, EyeOff, Loader2, CircleDot, Zap, AlertTriangle, Cloud } from "lucide-react";
 import { toast } from "sonner";
 
@@ -509,6 +510,9 @@ export default function SettingsPage() {
           );
         })}
       </div>
+
+      {/* Add inference models from OpenRouter's live catalog */}
+      <OpenRouterModels />
 
       {/* Vertex Flex (alternative auth for Google) */}
       <div className="rounded-xl bg-white p-5 shadow-sm border border-slate-100">

@@ -127,7 +127,7 @@ export default function NewJobPage() {
     {
       id: "transcribe_text",
       label: "Transcribe Text",
-      prompt: "Transcribe all the text in this image exactly as written. Preserve the original formatting, line breaks, and spelling. Output ONLY the transcribed text, nothing else.",
+      prompt: "Transcribe all the text in this image exactly as written. Preserve the original formatting, line breaks, and spelling. If the page contains a table, render it inline as a markdown table within the text — do not omit it. Output ONLY the transcribed text, nothing else.",
     },
     {
       id: "extract_table_markdown",
@@ -512,6 +512,10 @@ export default function NewJobPage() {
           ...(reasoningEffort !== "low" ? { reasoning_effort: reasoningEffort } : {}),
           ...(mediaResolution && mediaResolution !== "default" ? { media_resolution: mediaResolution } : {}),
           ...(structuredOutput && promptMode === "schema" ? { structured_output: true } : {}),
+          // Only the explicit table-extraction presets fan a page out into
+          // one CSV row per table row. Every other prompt keeps the page's
+          // text (tables included) in a single cell.
+          ...(promptMode === "preset" && (selectedPreset === "extract_table_json" || selectedPreset === "extract_table_markdown") ? { expand_rows: true } : {}),
         },
       };
 
