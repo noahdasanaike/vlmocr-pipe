@@ -1,6 +1,6 @@
 # vlmocr-pipe
 
-Local, self-hosted pipeline for digitizing documents with vision language models. Upload document images, auto-label with any VLM, fine-tune an open-source model with LoRA, and run batch inference — all locally.
+Local, self-hosted pipeline for digitizing documents with vision language models. Upload document images, auto-label with any VLM, fine-tune an open-source model with LoRA, and run batch inference, all locally.
 
 Companion software to [*Zero-Shot Digitization of Historical Documents with Vision Language Models*](https://www.dropbox.com/scl/fi/kjstgkkofqjs45jugxpcc/dasanaike_vlms.pdf?rlkey=ewkv46l5ghil61u3l66441k31&e=1&st=q5zd7410&dl=0) (Dasanaike 2026).
 
