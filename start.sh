@@ -1,25 +1,37 @@
 #!/bin/bash
 set -e
 
-# Run install (idempotent — fast on subsequent runs)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Run install (idempotent — fast on subsequent runs)
 bash "$SCRIPT_DIR/install.sh"
 
-# Find a Python that actually runs (skip the Windows Store stub on PATH).
-PYTHON=""
-for cand in python3 python; do
-  if command -v "$cand" >/dev/null 2>&1 && "$cand" -c "import sys" >/dev/null 2>&1; then
-    PYTHON="$cand"
-    break
-  fi
-done
-[ -n "$PYTHON" ] || { echo "Error: Python 3 is required."; exit 1; }
+# ---------------------------------------------------------------------------
+# Resolve the Python that install.sh placed inside the venv.
+# install.sh writes a small env file so we never touch system Python here.
+# ---------------------------------------------------------------------------
+ENV_FILE="$SCRIPT_DIR/apps/worker/.venv/vlmocr-env.sh"
+
+if [ ! -f "$ENV_FILE" ]; then
+  echo "Error: Python environment not found. Run ./install.sh first."
+  exit 1
+fi
+
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+PYTHON="$VLMOCR_PYTHON"
+
+if [ ! -x "$PYTHON" ]; then
+  echo "Error: venv Python not found at $PYTHON — re-run ./install.sh."
+  exit 1
+fi
 
 echo ""
 echo "Starting services..."
 echo ""
 echo "  Web UI:  http://localhost:3000"
 echo "  Worker:  running in background"
+echo "  Python:  $PYTHON"
 echo ""
 echo "  Press Ctrl+C to stop both services."
 echo ""
@@ -28,7 +40,7 @@ echo ""
 cd "$SCRIPT_DIR/apps/web" && npm run dev &
 WEB_PID=$!
 
-cd "$SCRIPT_DIR/apps/worker" && $PYTHON main.py &
+cd "$SCRIPT_DIR/apps/worker" && "$PYTHON" main.py &
 WORKER_PID=$!
 
 cleanup() {
